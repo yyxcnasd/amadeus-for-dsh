@@ -45,4 +45,4 @@ Write-Host '发行包已生成：' -ForegroundColor Green
 Write-Host "  $ZIP"
 Write-Host '用法：'
 Write-Host '  ① 解压后双击 Amadeus-OneClick.bat；'
-Write-Host '  ② 或直接在线安装：powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/yyxcnasd/amadeus-for-dsh/main/install.ps1 | iex"'
+Write-Host '  ② 或直接在线安装：powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/yyxcnasd/amadeus-for-dsh/main/install-online.ps1 | iex"'

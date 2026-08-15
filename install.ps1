@@ -4,7 +4,7 @@
 #
 # 三种用法：
 #   1) 在线一行命令（无需下载任何文件）：
-#        powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/yyxcnasd/amadeus-for-dsh/main/install.ps1 | iex"
+#        powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/yyxcnasd/amadeus-for-dsh/main/install-online.ps1 | iex"
 #   2) 本地：解压发行版 zip 后，双击 Amadeus-OneClick.bat （或直接运行本脚本）
 #   3) 仓库开发者：直接在源码目录运行本脚本（自动先构建静态包）
 #

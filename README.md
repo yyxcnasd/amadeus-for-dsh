@@ -25,7 +25,7 @@
 复制下面这一行，粘贴到 **PowerShell**（或 CMD）里回车：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/yyxcnasd/amadeus-for-dsh/main/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/yyxcnasd/amadeus-for-dsh/main/install-online.ps1 | iex"
 ```
 
 然后按提示选择：
