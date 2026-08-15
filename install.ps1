@@ -16,14 +16,20 @@
 #   插件本体 → profiles\node_modules\amadeus-for-dsh
 #   运行数据 → ~/.dsh\amadeus\{config,memory,tmp}　（重装/升级不丢失）
 # ============================================================
-[CmdletBinding()]
-param(
-  [ValidateSet('edge', 'quest', 'none', '')]
-  [string]$Channel = '',
-  [switch]$Uninstall
-)
-
 $ErrorActionPreference = 'Stop'
+
+# 说明：本脚本不使用 param() 块 —— 因为 `irm <url> | iex` 用 Invoke-Expression
+# 执行时不允许脚本以 param() 开头。参数在这里手动解析，三种用法都兼容。
+$Channel = ''
+$Uninstall = $false
+for ($i = 0; $i -lt $args.Count; $i++) {
+  $a = $args[$i]
+  if ($a -eq '-Uninstall') { $Uninstall = $true }
+  elseif ($a -eq '-Channel' -or $a -like '-Channel:*') {
+    if ($a -like '-Channel:*') { $Channel = $a.Substring($a.IndexOf(':') + 1) }
+    elseif ($i + 1 -lt $args.Count) { $i++; $Channel = [string]$args[$i] }
+  }
+}
 
 # GitHub 发布信息（发布时按实际情况修改）
 $GithubOwner = 'yyxcnasd'
