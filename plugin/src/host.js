@@ -1818,7 +1818,6 @@ return {
       if (msg.length > 0) {
         clientReports.push({ t: new Date().toISOString(), msg: '[ui] ' + msg })
         if (clientReports.length > 60) clientReports.shift()
-        console.log('[amadeus:ui]', msg)
       }
       return { ok: true }
     }))
@@ -1834,7 +1833,6 @@ return {
           if (msg.length > 0) {
             clientReports.push({ t: new Date().toISOString(), msg })
             if (clientReports.length > 60) clientReports.shift()
-            console.log('[amadeus:client]', msg)
           }
           sendJson(res, 200, { ok: true })
         } catch (e) {
