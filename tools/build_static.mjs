@@ -54,6 +54,7 @@ const STATIC_PATHS = `    // 静态版路径（由 tools/build_static.mjs 生成
     const STT_PY = ROOT + '/tools/stt.py'
     const LLM_CHAT_PY = ROOT + '/tools/llm_chat.py'
     const MEM_SAVE_PY = ROOT + '/tools/mem_save.py'
+    const TTS_SERVER_PY = ROOT + '/tools/tts_server.py'
     const TMP_DIR = DATA_DIR + '/tmp'
 `
 
