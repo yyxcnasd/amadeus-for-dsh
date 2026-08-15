@@ -2130,4 +2130,5 @@ export function apply(ctx) {
     // 预热常驻 TTS worker（后台拉起，首句即可复用；不支持时静默回退）
     ensureTtsWorker().catch((e) => console.warn('[amadeus] TTS worker 预热失败:', e && e.message ? e.message : String(e)))
     console.log('[amadeus] Amadeus v8 host 已就绪。配置:', JSON.stringify({ voiceOn: config.voiceOn, chatOn: config.chatOn, callOn: config.callOn, idleChatOn: config.idleChatOn }))
+    diagLog('boot build=2026-08-16b taskMode=' + taskMode + ' suppress=' + suppressReportRemaining)
 }
