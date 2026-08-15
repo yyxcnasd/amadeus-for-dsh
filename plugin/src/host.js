@@ -143,10 +143,8 @@ return {
     let config = Object.assign({}, DEFAULT_CONFIG)
     let personaText = DEFAULT_PERSONA
     let lastSpokenMessageId = null
-    // 完成播报幂等：同一任务只报一次（用户新消息/新目标创建时复位）
+    // 完成播报幂等：每个回合结束报一次（turn/start 或用户新消息时复位）
     let completionAnnounced = false
-    // 当前回合是否出现过工具调用（turn/end 时若为真 → 报「完成」）
-    let turnHadTools = false
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -1853,29 +1851,22 @@ return {
       try {
         if (event === null || typeof event !== 'object') return
         if (event.type === 'user/message') {
-          // 新任务/新对话开始：解锁完成播报
+          // 新一轮对话开始：解锁完成播报
           completionAnnounced = false
-          turnHadTools = false
           return
         }
         if (event.type === 'turn/start') {
-          turnHadTools = false
-          return
-        }
-        if (event.type === 'tool/call' || event.type === 'tool/result') {
-          turnHadTools = true
+          // 每个回合结束都会报「完成」——按用户要求“统一报告”，每次回复结束都报一次
+          completionAnnounced = false
           return
         }
         if (event.type === 'turn/end') {
-          // 本回合动用了工具 → 视为一次工作回合结束，报「完成」
-          if (turnHadTools) notifyComplete()
-          turnHadTools = false
+          notifyComplete()
           return
         }
         if (event.type === 'goal/change') {
           const gd = event.data
           if (gd && typeof gd === 'object' && typeof gd.operation === 'string') {
-            if (gd.operation === 'create') completionAnnounced = false
             if (gd.operation === 'complete') {
               notifyComplete()
             }
@@ -1883,7 +1874,7 @@ return {
           return
         }
         if (event.type === 'assistant/message') {
-          // 只识别完成报告：含 update_goal complete / exit_plan_mode / goal.complete → 报完成
+          // 含完成工具调用（update_goal complete / exit_plan_mode / goal.complete）→ 报完成
           const msg = event.data && event.data.message
           if (msg && typeof msg === 'object' && isTaskCompleteMessage(msg)) {
             notifyComplete()
