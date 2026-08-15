@@ -44,6 +44,7 @@ return {
     const STT_PY = ROOT + '/tools/stt.py'
     const LLM_CHAT_PY = ROOT + '/tools/llm_chat.py'
     const MEM_SAVE_PY = ROOT + '/tools/mem_save.py'
+    const TTS_SERVER_PY = ROOT + '/tools/tts_server.py'
     const TMP_DIR = DATA_DIR + '/tmp'
     // @@AMADEUS_PATHS_END@@
     const MAX_TTS_BYTES = 2000000
@@ -142,6 +143,8 @@ return {
     let config = Object.assign({}, DEFAULT_CONFIG)
     let personaText = DEFAULT_PERSONA
     let lastSpokenMessageId = null
+    // 流式朗读状态：assistant/chunk 边生成边读，assistant/message 只补未读尾部
+    let liveStream = null  // { key, buffer, spokenLen }
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -243,6 +246,23 @@ return {
         if (p.length > 0) out.push(p)
       }
       return out
+    }
+
+    // 流式切句：只切出“以终止符收尾”的完整句（未完成的不读），返回句文本数组与已消费长度。
+    function nextCompleteSentences(text) {
+      const out = []
+      let start = 0
+      let lastEnd = -1
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        if (ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?' || ch === '…' || ch === '\n') {
+          const s = text.slice(start, i + 1).replace(/\s+/g, ' ').trim()
+          if (s.length > 0) out.push(s)
+          lastEnd = i + 1
+          start = i + 1
+        }
+      }
+      return { sentences: out, consumed: lastEnd }
     }
 
     function emotionFor(text) {
@@ -550,10 +570,101 @@ return {
     }
 
     // ---------------- TTS Provider ----------------
+    // 常驻 Edge-TTS worker：省去每句重新启动 Python + 导入 edge-tts 的开销（约 0.5~1s/句）。
+    // 懒启动、失败自动回退到逐句 python 子进程；外部无法使用时 ttsWorker 置 {disabled:true}。
+    let ttsWorker = null  // { port, proc } | { disabled: true }
+    let ttsWorkerSeq = 0
+
+    async function ensureTtsWorker() {
+      if (ttsWorker !== null) return ttsWorker.disabled === true ? null : ttsWorker.port
+      if (config.provider !== 'edge' && config.provider !== 'auto') return null
+      let proc
+      try {
+        const py = await subprocess.resolveExecutable('python')
+        proc = subprocess.spawn({
+          argv: [py, TTS_SERVER_PY, '--root', TMP_DIR],
+          cwd: ROOT,
+          stdio: { stdin: 'ignore', stdout: 'pipe', stderr: { maxBytes: 8192 } },
+          graceMs: 5000,
+        })
+        const port = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('tts worker ready timeout')), 10000)
+          let buf = ''
+          const stream = proc.stdout
+          const onData = (chunk) => {
+            buf += String(chunk)
+            let idx
+            while ((idx = buf.indexOf('\n')) >= 0) {
+              const line = buf.slice(0, idx).trim()
+              buf = buf.slice(idx + 1)
+              if (line.startsWith('READY:')) {
+                clearTimeout(timer)
+                stream.removeListener('data', onData)
+                const p = parseInt(line.slice(6), 10)
+                if (Number.isFinite(p) && p > 0) { resolve(p); return }
+                reject(new Error('tts worker bad port line: ' + line))
+                return
+              }
+            }
+          }
+          stream.on('data', onData)
+          proc.done.then(() => { clearTimeout(timer); reject(new Error('tts worker exited early')) }, () => { clearTimeout(timer); reject(new Error('tts worker spawn failed')) })
+        })
+        ttsWorker = { port, proc }
+        const seq = ++ttsWorkerSeq
+        proc.done.then(() => {
+          // 进程退出后清引用，下次自动重启（忽略已替换的旧进程）
+          if (ttsWorker && ttsWorker.proc === proc) ttsWorker = null
+        }).catch(() => { if (ttsWorker && ttsWorker.proc === proc) ttsWorker = null })
+        console.log('[amadeus] TTS worker 就绪: 127.0.0.1:' + port)
+        return port
+      } catch (e) {
+        console.warn('[amadeus] TTS worker 启动失败，回退逐句 python:', e && e.message ? e.message : String(e))
+        try { if (proc) proc.terminate() } catch (e2) { /* ignore */ }
+        ttsWorker = { disabled: true }
+        return null
+      }
+    }
+
+    function teardownTtsWorker() {
+      if (ttsWorker && ttsWorker.proc) {
+        ttsWorkerSeq += 1
+        try { ttsWorker.proc.terminate() } catch (e) { /* ignore */ }
+      }
+      ttsWorker = null
+    }
+
     async function synthesizeEdge(text, voice, rate, pitch, emotion) {
       ttsFileSeq = (ttsFileSeq + 1) % 8
-      const outPath = TMP_DIR + '/tts-' + ttsFileSeq + '-' + nextSlot() + '.mp3'
+      const slot = nextSlot()
       const intensity = typeof config.emotionIntensity === 'number' ? config.emotionIntensity : 1
+      // 1) 常驻 worker 优先
+      try {
+        const port = await ensureTtsWorker()
+        if (port !== null) {
+          const outPath = TMP_DIR + '/w-' + ttsFileSeq + '-' + slot + '-' + Date.now() + '.mp3'
+          const reqPath = TMP_DIR + '/wreq-' + ttsFileSeq + '-' + slot + '.json'
+          const respPath = TMP_DIR + '/wresp-' + ttsFileSeq + '-' + slot + '.json'
+          await writeTextSafe(reqPath, JSON.stringify({
+            text, voice: voice || 'ja-JP-NanamiNeural', emotion,
+            rate: rate || '+0%', pitch: pitch || '+0Hz',
+            intensity, out: outPath,
+          }))
+          await runCurl(['-sS', '--max-time', '45', '-X', 'POST', '-H', 'Content-Type: application/json', '--data-binary', '@' + reqPath, 'http://127.0.0.1:' + port + '/synth', '-o', respPath])
+          const j = await readTextFile(respPath)
+          const parsed = j ? JSON.parse(j) : null
+          if (!parsed || parsed.ok !== true) throw new Error('tts worker: ' + (parsed && parsed.error ? parsed.error : 'no response'))
+          const bytes = await readFileBytes(parsed.out, MAX_TTS_BYTES)
+          if (bytes === null || bytes.length < 200) throw new Error('edge: empty audio')
+          let words = []
+          if (Array.isArray(parsed.words)) words = parsed.words.filter((w) => w && typeof w.o === 'number' && typeof w.d === 'number')
+          return { bytes, words, mime: 'audio/mpeg' }
+        }
+      } catch (e) {
+        console.warn('[amadeus] worker 合成失败，回退逐句 python:', e && e.message ? e.message : String(e))
+      }
+      // 2) 回退：逐句 python 子进程
+      const outPath = TMP_DIR + '/tts-' + ttsFileSeq + '-' + slot + '.mp3'
       await runPython([TTS_EMOTE_PY, text, voice, emotion, outPath, rate || '+0%', pitch || '+0Hz', String(intensity)], 'edge_tts')
       const bytes = await readFileBytes(outPath, MAX_TTS_BYTES)
       if (bytes === null || bytes.length < 200) throw new Error('edge: empty audio')
@@ -1712,17 +1823,49 @@ return {
       handler: async (req, res) => { sendJson(res, 200, { reports: clientReports }) },
     }))
 
-    // ---------------- 助手消息 → 语音 ----------------
+    // ---------------- 助手消息 → 语音（流式：边生成边朗读） ----------------
     ctx.effect(() => ctx.on('session/event', (session, event) => {
       try {
         if (event === null || typeof event !== 'object') return
-        if (event.type !== 'assistant/message') return
         if (config.voiceOn !== true) return
         const data = event.data
         if (data === null || typeof data !== 'object') return
+        const sessKey = (session && typeof session === 'object' && (session.id || session.sessionId)) ? String(session.id || session.sessionId) : 'x'
+
+        // ① 流式 chunk：形成完整句立即朗读，不看完整条
+        if (event.type === 'assistant/chunk') {
+          const chunk = data.chunk
+          if (!chunk || chunk.type !== 'text-delta' || typeof chunk.text !== 'string' || chunk.text.length === 0) return
+          const key = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
+          if (liveStream === null || liveStream.key !== key) {
+            liveStream = { key, buffer: '', spokenLen: 0 }
+          }
+          const ls = liveStream
+          ls.buffer += chunk.text
+          if (ls.spokenLen > 0 && ls.spokenLen > ls.buffer.length) { liveStream = null; return }
+          const pend = ls.buffer.slice(ls.spokenLen)
+          if (pend.length === 0) return
+          const parts = nextCompleteSentences(pend)
+          if (parts.sentences.length > 0 && parts.consumed > 0) {
+            pushUtterances(parts.sentences, false, emotionFor(parts.sentences[0]))
+            ls.spokenLen += parts.consumed
+          }
+          return
+        }
+
+        // ② 完整消息：只补流式朗读后剩下的尾部
+        if (event.type !== 'assistant/message') return
         const msg = data.message
         if (msg === null || typeof msg !== 'object') return
         const mid = typeof msg.id === 'string' ? msg.id : null
+        const key2 = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
+        let spokenPrefix = ''
+        if (liveStream !== null) {
+          if (liveStream.key === key2 && liveStream.spokenLen > 0) {
+            spokenPrefix = liveStream.buffer.slice(0, liveStream.spokenLen)
+          }
+          liveStream = null
+        }
         if (mid !== null) {
           if (lastSpokenMessageId === mid) return
           lastSpokenMessageId = mid
@@ -1741,6 +1884,19 @@ return {
         if (text.length === 0) return
         const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
         if (text.length > cap) text = text.slice(0, cap)
+        // 已在 chunk 阶段读过的部分 → 只读尾部（按折叠空白后的公共前缀对齐）
+        if (spokenPrefix.length > 0) {
+          const collapse = (s) => s.replace(/\s+/g, ' ')
+          const cText = collapse(text)
+          const cSpoken = collapse(spokenPrefix)
+          let m = 0
+          const n = Math.min(cText.length, cSpoken.length)
+          while (m < n && cText[m] === cSpoken[m]) m++
+          if (m >= cText.length) return  // 整段已读完
+          if (m > 0) text = cText.slice(m)
+        }
+        text = text.replace(/\s+/g, ' ').trim()
+        if (text.length === 0) return
         lastSpokenText = text
         pushUtterances(splitSentences(text), false, emotionFor(text))
       } catch (e) {
@@ -1794,6 +1950,11 @@ return {
       try { scheduleSaveMemory() } catch (e) { /* ignore */ }
     }, 60000))
 
+    // 卸载插件时终止常驻 TTS worker
+    ctx.effect(() => {
+      return () => { teardownTtsWorker() }
+    })
+
     // ---------------- 人格注入 ----------------
     if (systemPrompt !== undefined) {
       ctx.effect(() => systemPrompt.section({
@@ -1811,6 +1972,8 @@ return {
         console.log('[amadeus] 记忆已加载:', memory.history.length, '条历史,', memory.facts.length, '条长期事实')
       }).catch((e) => console.error('[amadeus] loadMemory:', e))
     })
+    // 预热常驻 TTS worker（后台拉起，首句即可复用；不支持时静默回退）
+    ensureTtsWorker().catch((e) => console.warn('[amadeus] TTS worker 预热失败:', e && e.message ? e.message : String(e)))
     console.log('[amadeus] Amadeus v8 host 已就绪。配置:', JSON.stringify({ voiceOn: config.voiceOn, chatOn: config.chatOn, callOn: config.callOn, idleChatOn: config.idleChatOn }))
   },
 }
