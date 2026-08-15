@@ -147,6 +147,8 @@ return {
     let liveStream = null  // { key, buffer, spokenLen }
     // 任务完成后的「报告抑制」：只播完成播报，不朗读整个任务结果。被用户消息或下一条助手消息消费。
     let suppressReportRemaining = 0
+    // 任务执行模式（goal active）：chunk 只攒不读，消息收尾统一判断是否完成报告
+    let taskMode = false
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -274,6 +276,7 @@ return {
         const b = msg.content[i]
         if (b === null || typeof b !== 'object' || b.type !== 'tool-call') continue
         const name = String(b.name || '')
+        if (name === 'exit_plan_mode') return true
         if (name === 'update_goal' || name === 'goal.complete' || /goal.*complete/i.test(name)) {
           try {
             const a = JSON.parse(String(b.arguments || '{}'))
@@ -605,8 +608,10 @@ return {
       try {
         const py = await subprocess.resolveExecutable('python')
         proc = subprocess.spawn({
+          // cwd 用数据目录而非安装目录：Windows 上常驻进程的 cwd 会锁住安装目录，
+          // 导致下次重装时 Remove-Item 失败。worker 全部使用绝对路径，不依赖 cwd。
           argv: [py, TTS_SERVER_PY, '--root', TMP_DIR],
-          cwd: ROOT,
+          cwd: TMP_DIR,
           stdio: { stdin: 'ignore', stdout: 'pipe', stderr: { maxBytes: 8192 } },
           graceMs: 5000,
         })
@@ -1868,12 +1873,19 @@ return {
         if (data === null || typeof data !== 'object') return
         const sessKey = (session && typeof session === 'object' && (session.id || session.sessionId)) ? String(session.id || session.sessionId) : 'x'
 
-        // ① 流式 chunk：形成完整句立即朗读；任务完成后的「报告」不读，只等播报
+        // ① 流式 chunk：普通模式边生成边读；任务执行模式只攒句不读（消息收尾统一判断）
         if (event.type === 'assistant/chunk') {
           if (suppressReportRemaining > 0) return
           const chunk = data.chunk
           if (!chunk || chunk.type !== 'text-delta' || typeof chunk.text !== 'string' || chunk.text.length === 0) return
           const key = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
+          if (taskMode) {
+            if (liveStream === null || liveStream.key !== key) {
+              liveStream = { key, buffer: '', spokenLen: 0, task: true }
+            }
+            liveStream.buffer += chunk.text
+            return
+          }
           if (liveStream === null || liveStream.key !== key) {
             liveStream = { key, buffer: '', spokenLen: 0 }
           }
@@ -1890,12 +1902,48 @@ return {
           return
         }
 
-        // ② 完整消息：只补流式朗读后剩下的尾部
+        // ② 完整消息：任务模式攒句收尾统一判断；普通模式只补流式朗读后的尾部
         if (event.type !== 'assistant/message') return
         const msg = data.message
         if (msg === null || typeof msg !== 'object') return
-        // 任务收尾：内含 goal 完成类工具调用，或正处于完成后的报告抑制期 → 不朗读正文，只报完成
-        if (isTaskCompleteMessage(msg)) {
+        const mid = typeof msg.id === 'string' ? msg.id : null
+        if (mid !== null) {
+          if (lastSpokenMessageId === mid) return
+          lastSpokenMessageId = mid
+        }
+        const blocks = msg.content
+        if (!Array.isArray(blocks)) return
+        const bTexts = []
+        for (let i = 0; i < blocks.length; i++) {
+          const b = blocks[i]
+          if (b !== null && typeof b === 'object' && b.kind === 'text' && typeof b.text === 'string') {
+            const t = b.text.trim()
+            if (t.length > 0) bTexts.push(t)
+          }
+        }
+        let text = bTexts.join(' ').replace(/\s+/g, ' ').trim()
+        const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
+        const isReport = isTaskCompleteMessage(msg)
+
+        if (taskMode) {
+          // 任务执行中：chunk 只攒不读 → 这里统一判断「完成报告」
+          const buf = liveStream !== null ? liveStream.buffer : ''
+          const wasSuppressed = suppressReportRemaining > 0
+          if (suppressReportRemaining > 0) suppressReportRemaining = 0
+          liveStream = null
+          // 完成报告（含 goal 完成工具调用）或完成后抑制期 → 整条丢弃，只播报
+          if (isReport || wasSuppressed) return
+          let say = (buf && buf.trim().length > 0) ? buf : text
+          say = say.replace(/\s+/g, ' ').trim()
+          if (say.length === 0) return
+          if (say.length > cap) say = say.slice(0, cap)
+          lastSpokenText = say
+          pushUtterances(splitSentences(say), false, emotionFor(say))
+          return
+        }
+
+        // 非任务模式：任务收尾/抑制期同样不朗读正文
+        if (isReport) {
           suppressReportRemaining = 0
           liveStream = null
           return
@@ -1905,7 +1953,8 @@ return {
           liveStream = null
           return
         }
-        const mid = typeof msg.id === 'string' ? msg.id : null
+        if (text.length === 0) return
+        if (text.length > cap) text = text.slice(0, cap)
         const key2 = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
         let spokenPrefix = ''
         if (liveStream !== null) {
@@ -1914,24 +1963,6 @@ return {
           }
           liveStream = null
         }
-        if (mid !== null) {
-          if (lastSpokenMessageId === mid) return
-          lastSpokenMessageId = mid
-        }
-        const blocks = msg.content
-        if (!Array.isArray(blocks)) return
-        const texts = []
-        for (let i = 0; i < blocks.length; i++) {
-          const b = blocks[i]
-          if (b !== null && typeof b === 'object' && b.kind === 'text' && typeof b.text === 'string') {
-            const t = b.text.trim()
-            if (t.length > 0) texts.push(t)
-          }
-        }
-        let text = texts.join(' ').replace(/\s+/g, ' ').trim()
-        if (text.length === 0) return
-        const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
-        if (text.length > cap) text = text.slice(0, cap)
         // 已在 chunk 阶段读过的部分 → 只读尾部（按折叠空白后的公共前缀对齐）
         if (spokenPrefix.length > 0) {
           const collapse = (s) => s.replace(/\s+/g, ' ')
@@ -1956,7 +1987,12 @@ return {
     ctx.effect(() => ctx.on('goal/changed', (payload) => {
       try {
         const g = payload && payload.change && payload.change.goal
-        if (g && g.phase === 'complete') {
+        if (!g || typeof g !== 'object') return
+        if (g.phase === 'active') {
+          // 任务开始执行：进入任务模式（chunk 只攒不读，消息收尾统一判断完成报告）
+          taskMode = true
+        } else if (g.phase === 'complete') {
+          taskMode = false
           announce('目標、達成。……まあ、当然でしょ？', 'excited')
           // 只报完成：抑制之后到达的「任务结果」消息朗读（下一条助手消息消费）
           suppressReportRemaining = Math.max(suppressReportRemaining, 1)
