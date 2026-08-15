@@ -147,8 +147,8 @@ return {
     let liveStream = null  // { key, buffer, spokenLen }
     // 任务完成后的「报告抑制」：只播完成播报，不朗读整个任务结果。被用户消息或下一条助手消息消费。
     let suppressReportRemaining = 0
-    // 任务执行模式（goal active）：chunk 只攒不读，消息收尾统一判断是否完成报告
-    let taskMode = false
+    // 完成播报幂等：同一任务只报一次（用户新消息/新目标创建时复位）
+    let completionAnnounced = false
     // 诊断环形缓冲（/amadeus/diag 可读，用于排查任务报告朗读等问题）
     const diag = []
     function diagLog(m) {
@@ -985,6 +985,13 @@ return {
       if (now - lastAnnounceAt < 8000) return
       lastAnnounceAt = now
       pushUtterances([text], true, emotion, text, { announce: true })
+    }
+
+    // 任务完成：只报一次「完成」（进对话区 + 播简短语音）。goal 事件与完成报告消息都可能触发。
+    function notifyComplete() {
+      if (completionAnnounced) return
+      completionAnnounced = true
+      announce('目標、達成。……まあ、当然でしょ？', 'excited')
     }
 
     // ---------------- AI 调用（独立 key 优先，llm 服务兜底） ----------------
@@ -1880,24 +1887,23 @@ return {
         if (event === null || typeof event !== 'object') return
         if (event.type !== 'assistant/chunk') diagLog('evt ' + event.type)
         if (event.type === 'user/message') {
-          // 新任务开始：解除报告抑制，恢复正常朗读
+          // 新任务/新对话开始：解除完成播报幂等与报告抑制
+          completionAnnounced = false
           suppressReportRemaining = 0
           return
         }
-        // 目标状态变更走「会话事件流」——goal/changed 是 agent 作用域事件，全局插件收不到。
+        // 目标状态变更：goal/changed 是 agent 作用域事件，全局插件收不到，故用会话事件流里的 goal/change。
         if (event.type === 'goal/change') {
           const gd = event.data
           if (gd && typeof gd === 'object' && typeof gd.operation === 'string') {
             const op = gd.operation
-            if (op === 'create' || op === 'resume' || op === 'block' || op === 'edit') taskMode = true
-            else if (op === 'complete' || op === 'pause' || op === 'clear') taskMode = false
+            if (op === 'create') completionAnnounced = false
             if (op === 'complete') {
-              // 只报完成：进对话区 + 播简短语音；抑制后续「任务结果」消息朗读
-              announce('目標、達成。……まあ、当然でしょ？', 'excited')
+              notifyComplete()
               suppressReportRemaining = Math.max(suppressReportRemaining, 1)
-              diagLog('goal/change complete -> taskMode=false suppress=1 (announce)')
+              diagLog('goal/change complete -> suppress=1 (announce)')
             } else {
-              diagLog('goal/change op=' + op + ' -> taskMode=' + taskMode)
+              diagLog('goal/change op=' + op)
             }
           }
           return
@@ -1907,40 +1913,22 @@ return {
         if (data === null || typeof data !== 'object') return
         const sessKey = (session && typeof session === 'object' && (session.id || session.sessionId)) ? String(session.id || session.sessionId) : 'x'
 
-        // ① 流式 chunk：普通模式边生成边读；任务执行模式只攒句不读（消息收尾统一判断）
+        // ① 流式 chunk：只攒不读（消息收尾统一判断：完成报告丢弃，其余整段朗读）
+        // 注：流式朗读无法区分「任务报告」与「聊天回复」（完成工具调用总是最后到达）。
+        // 为保证“任务完成只报完成”，一律收尾整段朗读——聊天仅有极短延迟，但报告绝不读。
         if (event.type === 'assistant/chunk') {
           if (suppressReportRemaining > 0) return
           const chunk = data.chunk
           if (!chunk || chunk.type !== 'text-delta' || typeof chunk.text !== 'string' || chunk.text.length === 0) return
           const key = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
-          if (taskMode) {
-            if (liveStream === null || liveStream.key !== key) {
-              liveStream = { key, buffer: '', spokenLen: 0, task: true }
-            }
-            liveStream.buffer += chunk.text
-            return
-          }
           if (liveStream === null || liveStream.key !== key) {
             liveStream = { key, buffer: '', spokenLen: 0 }
           }
-          const ls = liveStream
-          ls.buffer += chunk.text
-          if (ls.spokenLen > 0 && ls.spokenLen > ls.buffer.length) { liveStream = null; return }
-          const pend = ls.buffer.slice(ls.spokenLen)
-          if (pend.length === 0) return
-          const parts = nextCompleteSentences(pend)
-          if (parts.sentences.length > 0 && parts.consumed > 0) {
-            if (!ls._logged) {
-              ls._logged = true
-              diagLog('stream said "' + parts.sentences[0].slice(0, 20).replace(/\n/g, ' ') + (parts.sentences[0].length > 20 ? '…' : '') + '" (' + key + ')')
-            }
-            pushUtterances(parts.sentences, false, emotionFor(parts.sentences[0]))
-            ls.spokenLen += parts.consumed
-          }
+          liveStream.buffer += chunk.text
           return
         }
 
-        // ② 完整消息：任务模式攒句收尾统一判断；普通模式只补流式朗读后的尾部
+        // ② 完整消息：整段朗读；含完成工具调用 → 丢弃，只报完成
         if (event.type !== 'assistant/message') return
         const msg = data.message
         if (msg === null || typeof msg !== 'object') return
@@ -1954,7 +1942,7 @@ return {
         const bTexts = []
         for (let i = 0; i < blocks.length; i++) {
           const b = blocks[i]
-          if (b !== null && typeof b === 'object' && b.kind === 'text' && typeof b.text === 'string') {
+          if (b !== null && typeof b === 'object' && (b.type === 'text' || b.kind === 'text') && typeof b.text === 'string') {
             const t = b.text.trim()
             if (t.length > 0) bTexts.push(t)
           }
@@ -1962,75 +1950,38 @@ return {
         let text = bTexts.join(' ').replace(/\s+/g, ' ').trim()
         const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
         const isReport = isTaskCompleteMessage(msg)
-        // 诊断：记录该消息内容块类型与工具调用名，便于排查完成检测
+
+        // 诊断：记录消息内容块类型与工具调用名
         let blockInfo = ''
-        for (let i = 0; i < blocks.length && i < 8; i++) {
+        for (let i = 0; i < blocks.length && i < 10; i++) {
           const bb = blocks[i]
           if (!bb || typeof bb !== 'object') { blockInfo += ',raw:' + String(bb); continue }
           blockInfo += ',' + (bb.type || bb.kind || '?')
           if (bb.type === 'tool-call' || bb.kind === 'tool-call') blockInfo += ':' + String(bb.name || '')
         }
-        diagLog('assistant/msg blocks[' + (blocks.length || 0) + ']=' + (blockInfo || '(none)') + ' len=' + text.length + ' isReport=' + isReport + ' taskMode=' + taskMode + ' suppress=' + suppressReportRemaining)
+        diagLog('assistant/msg blocks[' + (blocks.length || 0) + ']=' + (blockInfo || '(none)') + ' len=' + text.length + ' isReport=' + isReport + ' suppress=' + suppressReportRemaining)
 
-        if (taskMode) {
-          // 任务执行中：chunk 只攒不读 → 这里统一判断「完成报告」
-          const buf = liveStream !== null ? liveStream.buffer : ''
-          const wasSuppressed = suppressReportRemaining > 0
-          if (suppressReportRemaining > 0) suppressReportRemaining = 0
-          liveStream = null
-          // 完成报告（含 goal 完成工具调用）或完成后抑制期 → 整条丢弃，只播报
-          if (isReport || wasSuppressed) {
-            diagLog(isReport ? 'taskMode DROP report (tool-call)' : 'taskMode DROP suppressed')
-            return
-          }
-          let say = (buf && buf.trim().length > 0) ? buf : text
-          say = say.replace(/\s+/g, ' ').trim()
-          if (say.length === 0) return
-          if (say.length > cap) say = say.slice(0, cap)
-          lastSpokenText = say
-          diagLog('taskMode speak "' + say.slice(0, 20).replace(/\n/g, ' ') + (say.length > 20 ? '…' : '') + '"')
-          pushUtterances(splitSentences(say), false, emotionFor(say))
-          return
-        }
-
-        // 非任务模式：任务收尾/抑制期同样不朗读正文
+        const buf = liveStream !== null ? liveStream.buffer : ''
+        liveStream = null
         if (isReport) {
-          suppressReportRemaining = 0
-          liveStream = null
-          diagLog('normal DROP report (tool-call)')
+          // 任务收尾消息 → 整条丢弃，只播/记录完成播报
+          notifyComplete()
+          suppressReportRemaining = Math.max(suppressReportRemaining, 1)
+          diagLog('DROP report (tool-call)')
           return
         }
         if (suppressReportRemaining > 0) {
           suppressReportRemaining = 0
-          liveStream = null
-          diagLog('normal DROP suppressed')
+          diagLog('DROP suppressed')
           return
         }
-        if (text.length === 0) return
-        if (text.length > cap) text = text.slice(0, cap)
-        const key2 = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
-        let spokenPrefix = ''
-        if (liveStream !== null) {
-          if (liveStream.key === key2 && liveStream.spokenLen > 0) {
-            spokenPrefix = liveStream.buffer.slice(0, liveStream.spokenLen)
-          }
-          liveStream = null
-        }
-        // 已在 chunk 阶段读过的部分 → 只读尾部（按折叠空白后的公共前缀对齐）
-        if (spokenPrefix.length > 0) {
-          const collapse = (s) => s.replace(/\s+/g, ' ')
-          const cText = collapse(text)
-          const cSpoken = collapse(spokenPrefix)
-          let m = 0
-          const n = Math.min(cText.length, cSpoken.length)
-          while (m < n && cText[m] === cSpoken[m]) m++
-          if (m >= cText.length) return  // 整段已读完
-          if (m > 0) text = cText.slice(m)
-        }
-        text = text.replace(/\s+/g, ' ').trim()
-        if (text.length === 0) return
-        lastSpokenText = text
-        pushUtterances(splitSentences(text), false, emotionFor(text))
+        let say = (buf && buf.trim().length > 0) ? buf : text
+        say = say.replace(/\s+/g, ' ').trim()
+        if (say.length === 0) return
+        if (say.length > cap) say = say.slice(0, cap)
+        lastSpokenText = say
+        diagLog('read "' + say.slice(0, 20).replace(/\n/g, ' ') + (say.length > 20 ? '…' : '') + '"')
+        pushUtterances(splitSentences(say), false, emotionFor(say))
       } catch (e) {
         console.error('[amadeus] session/event 处理失败:', e && e.message ? e.message : String(e))
       }
@@ -2103,6 +2054,6 @@ return {
     // 预热常驻 TTS worker（后台拉起，首句即可复用；不支持时静默回退）
     ensureTtsWorker().catch((e) => console.warn('[amadeus] TTS worker 预热失败:', e && e.message ? e.message : String(e)))
     console.log('[amadeus] Amadeus v8 host 已就绪。配置:', JSON.stringify({ voiceOn: config.voiceOn, chatOn: config.chatOn, callOn: config.callOn, idleChatOn: config.idleChatOn }))
-    diagLog('boot build=2026-08-16b taskMode=' + taskMode + ' suppress=' + suppressReportRemaining)
+    diagLog('boot build=2026-08-16c suppress=' + suppressReportRemaining)
   },
 }
