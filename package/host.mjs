@@ -170,10 +170,6 @@ export function apply(ctx) {
     let config = Object.assign({}, DEFAULT_CONFIG)
     let personaText = DEFAULT_PERSONA
     let lastSpokenMessageId = null
-    // 流式朗读状态：assistant/chunk 边生成边读，assistant/message 只补未读尾部
-    let liveStream = null  // { key, buffer, spokenLen }
-    // 任务完成后的「报告抑制」：只播完成播报，不朗读整个任务结果。被用户消息或下一条助手消息消费。
-    let suppressReportRemaining = 0
     // 完成播报幂等：同一任务只报一次（用户新消息/新目标创建时复位）
     let completionAnnounced = false
     // 诊断环形缓冲（/amadeus/diag 可读，用于排查任务报告朗读等问题）
@@ -287,35 +283,7 @@ export function apply(ctx) {
       return out
     }
 
-    // 流式切句：只切出“以终止符收尾”的完整句（未完成的不读），返回句文本数组与已消费长度。
-    function nextCompleteSentences(text) {
-      const out = []
-      let start = 0
-      let lastEnd = -1
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i]
-        if (ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?' || ch === '…' || ch === '\n') {
-          const s = text.slice(start, i + 1).replace(/\s+/g, ' ').trim()
-          if (s.length > 0) out.push(s)
-          lastEnd = i + 1
-          start = i + 1
-        }
-      }
-      return { sentences: out, consumed: lastEnd }
-    }
-
-    // 判断一条消息是否是「干活」消息：含任意工具调用块 → 不朗读（任务/过程/结果都静默，只保留完成播报）
-    function messageHasToolCall(msg) {
-      if (!msg || !Array.isArray(msg.content)) return false
-      for (let i = 0; i < msg.content.length; i++) {
-        const b = msg.content[i]
-        if (b === null || typeof b !== 'object') continue
-        if (b.type === 'tool-call' || b.kind === 'tool-call') return true
-      }
-      return false
-    }
-
-    // 判断一条助手消息是否是「任务收尾」：内含 goal 完成类工具调用 → 不朗读正文，只报完成。
+    // 判断一条助手消息是否是「任务收尾」：内含 goal 完成类工具调用 → 报告完成。
     function isTaskCompleteMessage(msg) {
       if (!msg || !Array.isArray(msg.content)) return false
       for (let i = 0; i < msg.content.length; i++) {
@@ -1919,125 +1887,37 @@ export function apply(ctx) {
       handler: async (req, res) => { sendJson(res, 200, { diag }) },
     }))
 
-    // ---------------- 助手消息 → 语音（流式：边生成边朗读） ----------------
+    // ---------------- 助手消息 → 语音 ----------------
+    // 需求：助手输出的文本一律不朗读（无论干活 / 对话）；任务完成时统一报告「目標、達成」。
     ctx.effect(() => ctx.on('session/event', (session, event) => {
       try {
         if (event === null || typeof event !== 'object') return
-        if (event.type !== 'assistant/chunk') diagLog('evt ' + event.type)
         if (event.type === 'user/message') {
-          // 新任务/新对话开始：解除完成播报幂等与报告抑制
+          // 新任务/新对话开始：解锁完成播报
           completionAnnounced = false
-          suppressReportRemaining = 0
           return
         }
-        // 目标状态变更：goal/changed 是 agent 作用域事件，全局插件收不到，故用会话事件流里的 goal/change。
         if (event.type === 'goal/change') {
           const gd = event.data
           if (gd && typeof gd === 'object' && typeof gd.operation === 'string') {
-            const op = gd.operation
-            if (op === 'create') completionAnnounced = false
-            if (op === 'complete') {
+            if (gd.operation === 'create') completionAnnounced = false
+            if (gd.operation === 'complete') {
               notifyComplete()
-              suppressReportRemaining = Math.max(suppressReportRemaining, 1)
-              diagLog('goal/change complete -> suppress=1 (announce)')
-            } else {
-              diagLog('goal/change op=' + op)
+              diagLog('goal/change complete -> announce')
             }
           }
           return
         }
-        if (config.voiceOn !== true) return
-        const data = event.data
-        if (data === null || typeof data !== 'object') return
-        const sessKey = (session && typeof session === 'object' && (session.id || session.sessionId)) ? String(session.id || session.sessionId) : 'x'
-
-        // ① 流式 chunk：只攒不读；顺带标记「干活」（出现工具调用 chunk）并记录工具名
-        // 注：流式朗读无法区分「任务报告」与「聊天回复」（完成工具调用总是最后到达）。
-        // 因此一律收尾判断：含工具调用=干活消息不读；纯对话消息收尾整段朗读。
-        if (event.type === 'assistant/chunk') {
-          if (suppressReportRemaining > 0) return
-          const chunk = data.chunk
-          if (chunk === null || typeof chunk !== 'object') return
-          const key = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
-          if (liveStream === null || liveStream.key !== key) {
-            liveStream = { key, buffer: '', spokenLen: 0 }
+        if (event.type === 'assistant/message') {
+          // 只识别完成报告：含 update_goal complete / exit_plan_mode / goal.complete → 报完成
+          const msg = event.data && event.data.message
+          if (msg && typeof msg === 'object' && isTaskCompleteMessage(msg)) {
+            notifyComplete()
+            diagLog('assistant/message complete -> announce')
           }
-          const ls = liveStream
-          if (chunk.type === 'tool-call-delta') {
-            ls.sawToolCall = true
-            diagLog('chunk tool-call-delta name=' + String(chunk.name || '') + ' id=' + String(chunk.id || ''))
-            return
-          }
-          if (chunk.type !== 'text-delta') {
-            diagLog('chunk type=' + String(chunk.type))
-            return
-          }
-          if (typeof chunk.text !== 'string' || chunk.text.length === 0) return
-          ls.buffer += chunk.text
           return
         }
-
-        // ② 完整消息：纯对话消息整段朗读；含工具调用的干活消息一律不读（含完成报告）
-        if (event.type !== 'assistant/message') return
-        const msg = data.message
-        if (msg === null || typeof msg !== 'object') return
-        const mid = typeof msg.id === 'string' ? msg.id : null
-        if (mid !== null) {
-          if (lastSpokenMessageId === mid) return
-          lastSpokenMessageId = mid
-        }
-        const blocks = msg.content
-        if (!Array.isArray(blocks)) return
-        const bTexts = []
-        for (let i = 0; i < blocks.length; i++) {
-          const b = blocks[i]
-          if (b !== null && typeof b === 'object' && (b.type === 'text' || b.kind === 'text') && typeof b.text === 'string') {
-            const t = b.text.trim()
-            if (t.length > 0) bTexts.push(t)
-          }
-        }
-        let text = bTexts.join(' ').replace(/\s+/g, ' ').trim()
-        const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
-        const isReport = isTaskCompleteMessage(msg)
-        const hadToolChunk = liveStream !== null && liveStream.sawToolCall === true
-        const hasTool = messageHasToolCall(msg) || hadToolChunk || (msg !== null && typeof msg === 'object' && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0)
-
-        // 诊断：记录消息内容块类型与工具调用名
-        let blockInfo = ''
-        for (let i = 0; i < blocks.length && i < 10; i++) {
-          const bb = blocks[i]
-          if (!bb || typeof bb !== 'object') { blockInfo += ',raw:' + String(bb); continue }
-          blockInfo += ',' + (bb.type || bb.kind || '?')
-          if (bb.type === 'tool-call' || bb.kind === 'tool-call') blockInfo += ':' + String(bb.name || '')
-        }
-        diagLog('assistant/msg blocks[' + (blocks.length || 0) + ']=' + (blockInfo || '(none)') + ' len=' + text.length + ' isReport=' + isReport + ' hasTool=' + hasTool + ' suppress=' + suppressReportRemaining)
-
-        const buf = liveStream !== null ? liveStream.buffer : ''
-        liveStream = null
-        if (isReport) {
-          // 任务收尾消息 → 整条丢弃，只播/记录完成播报
-          notifyComplete()
-          suppressReportRemaining = Math.max(suppressReportRemaining, 1)
-          diagLog('DROP report (tool-call)')
-          return
-        }
-        if (suppressReportRemaining > 0) {
-          suppressReportRemaining = 0
-          diagLog('DROP suppressed')
-          return
-        }
-        if (hasTool) {
-          // 干活消息：不朗读（可能含任务过程/结果文本）；完成播报另行处理
-          diagLog('SKIP work message (tool-call present) len=' + ((buf && buf.trim()) ? buf.length : text.length))
-          return
-        }
-        let say = (buf && buf.trim().length > 0) ? buf : text
-        say = say.replace(/\s+/g, ' ').trim()
-        if (say.length === 0) return
-        if (say.length > cap) say = say.slice(0, cap)
-        lastSpokenText = say
-        diagLog('read "' + say.slice(0, 20).replace(/\n/g, ' ') + (say.length > 20 ? '…' : '') + '"')
-        pushUtterances(splitSentences(say), false, emotionFor(say))
+        // assistant/chunk 等其它事件：不朗读任何助手文本
       } catch (e) {
         console.error('[amadeus] session/event 处理失败:', e && e.message ? e.message : String(e))
       }
@@ -2110,5 +1990,5 @@ export function apply(ctx) {
     // 预热常驻 TTS worker（后台拉起，首句即可复用；不支持时静默回退）
     ensureTtsWorker().catch((e) => console.warn('[amadeus] TTS worker 预热失败:', e && e.message ? e.message : String(e)))
     console.log('[amadeus] Amadeus v8 host 已就绪。配置:', JSON.stringify({ voiceOn: config.voiceOn, chatOn: config.chatOn, callOn: config.callOn, idleChatOn: config.idleChatOn }))
-    diagLog('boot build=2026-08-16c suppress=' + suppressReportRemaining)
+    diagLog('boot build=2026-08-16d (mute-assistant)')
 }
