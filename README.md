@@ -34,7 +34,7 @@ cd amadeus-for-dsh
 | `%DSH_HOME%\amadeus\{config,memory,tmp}\` | 配置 / 长期记忆 / 临时音频（**升级不丢**） |
 | `%DSH_HOME%\profiles\web\cordis.patch.yml` | 自动插入加载行（原文件备份 `.bak-*`） |
 
-`%DSH_HOME%` 默认 `C:\Users\<你>\.dsh`，可用环境变量覆盖。卸载：`.\install.ps1 -Uninstall`（保留数据）。
+`%DSH_HOME%` 默认 `C:\Users\<你>\.dsh`，可用环境变量覆盖。卸载：`.\install.ps1 -Uninstall`（保留数据，且自动保持 `cordis.patch.yml` 为合法数组；手动删 insert 段后若文件变空，需恢复成一行 `[]`，否则 DSH 无法启动）
 
 ## ✨ 功能
 

@@ -159,12 +159,17 @@ function Install-Plugins {
   Write-Info '[1/4] 安装插件到 profiles\node_modules\amadeus-for-dsh …'
   if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
   New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-  Copy-Tree -Src $Src -Dst $installDir `
-    -ExcludeDirs @('node_modules', '.git', 'memory', 'tmp', '__pycache__', 'docs', 'research') `
-    -ExcludeFiles @('*.pyc')
-  # 清理可能带进来的符号链接
-  $nm = Join-Path $installDir 'package\node_modules'
-  if (Test-Path $nm) { Remove-Item -Recurse -Force $nm }
+  # 静态包内容拍平到安装目录根（DSH 加载器从安装目录解析包：index.js / package.json / host.mjs）
+  Copy-Tree -Src (Join-Path $Src 'package') -Dst $installDir `
+    -ExcludeDirs @('node_modules') -ExcludeFiles @()
+  # 运行时资源目录（host.mjs 的 ROOT = 安装目录，从这里读面板/资产/工具/人格）
+  foreach ($r in @('plugin', 'assets', 'config', 'persona', 'tools')) {
+    $rsrc = Join-Path $Src $r
+    if (Test-Path $rsrc) {
+      Copy-Tree -Src $rsrc -Dst (Join-Path $installDir $r) `
+        -ExcludeDirs @('node_modules', '__pycache__') -ExcludeFiles @('*.pyc')
+    }
+  }
 
   # 2. 运行数据目录 + 配置文件
   Write-Info '[2/4] 初始化运行数据目录（配置/记忆/临时）…'
@@ -193,11 +198,22 @@ function Install-Plugins {
     }
   }
 
-  # 3. 主机组合补丁层插入 amadeus 行（幂等 + 自动备份）
+  # 3. 主机组合补丁层插入 amadeus 行（幂等 + 自动备份，始终保证顶层是合法 YAML 数组）
   Write-Info '[3/4] 写入主机补丁层 cordis.patch.yml …'
+  $patchHeader = '# Your patch layer for this dsh profile, applied after every bundle layer:'
+  $defaultPatch = $patchHeader + "`r`n[]`r`n"
   if (-not (Test-Path $patchYml)) {
-    [System.IO.File]::WriteAllText($patchYml, "# Your patch layer for this dsh profile, applied after every bundle layer:`r`n[]`r`n", (New-Object System.Text.UTF8Encoding $true))
+    [System.IO.File]::WriteAllText($patchYml, $defaultPatch, (New-Object System.Text.UTF8Encoding $true))
     Write-Warn '补丁层文件不存在，已重建默认空文件'
+  } else {
+    $curText = Get-Content -Raw -Encoding UTF8 $patchYml
+    $trimText = ($curText -replace '^\uFEFF', '').Trim()
+    $looksArray = ($trimText -match '(?m)^\s*-\s') -or ($trimText -match '^\[')
+    if ($trimText.Length -eq 0 -or -not $looksArray) {
+      Copy-Item $patchYml ($patchYml + '.bak-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+      [System.IO.File]::WriteAllText($patchYml, $defaultPatch, (New-Object System.Text.UTF8Encoding $true))
+      Write-Warn 'cordis.patch.yml 不是合法的顶层数组，已重建为默认空文件（原内容备份 .bak-*）'
+    }
   }
   $yml = Get-Content -Raw -Encoding UTF8 $patchYml
   if ($yml -notmatch 'id: amadeus\b') {
@@ -260,12 +276,20 @@ function Uninstall-Plugins {
 
   if (Test-Path $patchYml) {
     $yml = Get-Content -Raw -Encoding UTF8 $patchYml
-    $pattern = "(?ms)\r?\n# ── Amadeus[^\r\n]*\r?\n- insert:\r?\n\s+- id: amadeus\r?\n\s+name: [^\r\n]+"
+    # 兼容两种写法：# ── Amadeus 注释块 或 裸 insert 块
+    $pattern = "(?ms)(\r?\n\s*# ── Amadeus[^\r\n]*)?\r?\n- insert:\r?\n\s+- id: amadeus\r?\n\s+name: amadeus-for-dsh"
     if ($yml -match $pattern) {
       Copy-Item $patchYml ($patchYml + '.bak-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
       $yml = $yml -replace $pattern, ''
-      [System.IO.File]::WriteAllText($patchYml, ($yml.TrimEnd() + "`r`n"), (New-Object System.Text.UTF8Encoding $true))
-      Write-Ok '已从 cordis.patch.yml 移除 amadeus 行（备份 .bak-*）'
+      $trim = ($yml -replace '^\uFEFF', '').Trim()
+      $looksArray = ($trim -match '(?m)^\s*-\s') -or ($trim -match '^\[')
+      if ($trim.Length -eq 0 -or -not $looksArray) {
+        [System.IO.File]::WriteAllText($patchYml, "# Your patch layer for this dsh profile, applied after every bundle layer:`r`n[]`r`n", (New-Object System.Text.UTF8Encoding $true))
+        Write-Ok '已从 cordis.patch.yml 移除 amadeus 行（原内容备份 .bak-*）；文件已重置为合法空数组 []'
+      } else {
+        [System.IO.File]::WriteAllText($patchYml, ($trim + "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+        Write-Ok '已从 cordis.patch.yml 移除 amadeus 行（备份 .bak-*）'
+      }
     }
   }
   if (Test-Path $installDir) {
