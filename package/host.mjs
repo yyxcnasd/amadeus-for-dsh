@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // Amadeus for DSH — Host half (v7)
 // 功能：
 //   - 持久记忆系统（短长期历史 / 事实提取，跨会话、跨重启）
@@ -172,14 +172,6 @@ export function apply(ctx) {
     let lastSpokenMessageId = null
     // 完成播报幂等：同一任务只报一次（用户新消息/新目标创建时复位）
     let completionAnnounced = false
-    // 诊断环形缓冲（/amadeus/diag 可读，用于排查任务报告朗读等问题）
-    const diag = []
-    function diagLog(m) {
-      const e = { t: Date.now(), m }
-      diag.push(e)
-      if (diag.length > 400) diag.shift()
-      console.log('[amadeus] ' + m)
-    }
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -985,7 +977,6 @@ export function apply(ctx) {
       const emo = EMOTIONS.indexOf(emotion) >= 0 ? emotion : 'neutral'
       // 播报留痕对话区（无论语音开关都记录）
       memory.history.push({ role: 'assistant', jp: text, cn: text, emotion: emo, announce: true, t: now })
-      diagLog('announce "' + String(text).slice(0, 24).replace(/\n/g, ' ') + '"')
       if (memory.history.length > 60) maybeCompactHistory()
       if (config.voiceOn !== true) return
       if (now - lastAnnounceAt < 8000) return
@@ -1881,12 +1872,6 @@ export function apply(ctx) {
       handler: async (req, res) => { sendJson(res, 200, { reports: clientReports }) },
     }))
 
-    ctx.effect(() => webServer.register({
-      kind: 'exact',
-      path: '/amadeus/diaglog',
-      handler: async (req, res) => { sendJson(res, 200, { diag }) },
-    }))
-
     // ---------------- 助手消息 → 语音 ----------------
     // 需求：助手输出的文本一律不朗读（无论干活 / 对话）；任务完成时统一报告「目標、達成」。
     ctx.effect(() => ctx.on('session/event', (session, event) => {
@@ -1903,7 +1888,6 @@ export function apply(ctx) {
             if (gd.operation === 'create') completionAnnounced = false
             if (gd.operation === 'complete') {
               notifyComplete()
-              diagLog('goal/change complete -> announce')
             }
           }
           return
@@ -1913,7 +1897,6 @@ export function apply(ctx) {
           const msg = event.data && event.data.message
           if (msg && typeof msg === 'object' && isTaskCompleteMessage(msg)) {
             notifyComplete()
-            diagLog('assistant/message complete -> announce')
           }
           return
         }
@@ -1990,5 +1973,4 @@ export function apply(ctx) {
     // 预热常驻 TTS worker（后台拉起，首句即可复用；不支持时静默回退）
     ensureTtsWorker().catch((e) => console.warn('[amadeus] TTS worker 预热失败:', e && e.message ? e.message : String(e)))
     console.log('[amadeus] Amadeus v8 host 已就绪。配置:', JSON.stringify({ voiceOn: config.voiceOn, chatOn: config.chatOn, callOn: config.callOn, idleChatOn: config.idleChatOn }))
-    diagLog('boot build=2026-08-16d (mute-assistant)')
 }
