@@ -216,6 +216,10 @@ function Install-Plugins {
     }
   }
   $yml = Get-Content -Raw -Encoding UTF8 $patchYml
+  # ── 关键：YAML 单文档内 flow 空数组 [] 与 block 条目互斥，必须移除 ──
+  $yml = $yml -replace '^\uFEFF', ''
+  $yml = [regex]::Replace($yml, '(?m)^[ \t]*\[\][ \t]*\r?\n?', '')
+  $added = $false
   if ($yml -notmatch 'id: amadeus\b') {
     Copy-Item $patchYml ($patchYml + '.bak-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     $row = @'
@@ -225,10 +229,14 @@ function Install-Plugins {
     - id: amadeus
       name: amadeus-for-dsh
 '@
-    [System.IO.File]::WriteAllText($patchYml, ($yml.TrimEnd() + $row), (New-Object System.Text.UTF8Encoding $true))
+    $yml = $yml.TrimEnd() + $row
+    $added = $true
+  }
+  [System.IO.File]::WriteAllText($patchYml, $yml, (New-Object System.Text.UTF8Encoding $true))
+  if ($added) {
     Write-Ok '已在 cordis.patch.yml 插入 amadeus 行（原文件已备份为 .bak-*）'
   } else {
-    Write-Ok 'amadeus 行已存在，跳过'
+    Write-Ok 'amadeus 行已存在；已清理补丁文件（移除空数组 []）'
   }
 
   # 清理旧版预设行（避免双重加载）
