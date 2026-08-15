@@ -950,7 +950,7 @@ export function apply(ctx) {
       })
     }
 
-    function pushUtterances(texts, force, emotion, cn) {
+    function pushUtterances(texts, force, emotion, cn, tags) {
       const emo = EMOTIONS.indexOf(emotion) >= 0 ? emotion : 'neutral'
       for (let i = 0; i < texts.length; i++) {
         const t = texts[i]
@@ -960,7 +960,11 @@ export function apply(ctx) {
           const per = emotionFor(t)
           if (per !== 'neutral') e = per
         }
-        queue.push({ id: nextId, kind: 'say', text: t.trim(), cn: i === texts.length - 1 ? (cn || '') : '', force: !!force, emotion: e, expr: EMOTION_EXPR[e] || '', ts: Date.now() })
+        const item = { id: nextId, kind: 'say', text: t.trim(), cn: i === texts.length - 1 ? (cn || '') : '', force: !!force, emotion: e, expr: EMOTION_EXPR[e] || '', ts: Date.now() }
+        if (tags && typeof tags === 'object') {
+          for (const k in tags) item[k] = tags[k]
+        }
+        queue.push(item)
         nextId += 1
         maxIssuedId = Math.max(maxIssuedId, nextId - 1)
         if (queue.length > 60) queue.shift()
@@ -986,10 +990,14 @@ export function apply(ctx) {
 
     function announce(text, emotion) {
       const now = Date.now()
-      if (now - lastAnnounceAt < 8000) return
+      const emo = EMOTIONS.indexOf(emotion) >= 0 ? emotion : 'neutral'
+      // 播报留痕对话区（无论语音开关都记录）
+      memory.history.push({ role: 'assistant', jp: text, cn: text, emotion: emo, announce: true, t: now })
+      if (memory.history.length > 60) maybeCompactHistory()
       if (config.voiceOn !== true) return
+      if (now - lastAnnounceAt < 8000) return
       lastAnnounceAt = now
-      pushUtterances([text], true, emotion)
+      pushUtterances([text], true, emotion, text, { announce: true })
     }
 
     // ---------------- AI 调用（独立 key 优先，llm 服务兜底） ----------------
@@ -1330,7 +1338,7 @@ export function apply(ctx) {
         memory.history.push({ role: 'assistant', jp: line.jp, cn: line.cn, emotion: line.emotion, idle: true, t: Date.now() })
         if (memory.history.length > 60) maybeCompactHistory()
         scheduleSaveMemory()
-        pushUtterances([line.jp], false, line.emotion, line.cn)
+        pushUtterances([line.jp], false, line.emotion, line.cn, { idle: true })
         console.log('[amadeus] 空闲闲聊:', line.jp)
       } catch (e) {
         console.error('[amadeus] 空闲闲聊失败:', e && e.message ? e.message : e)
@@ -1533,7 +1541,7 @@ export function apply(ctx) {
         if (!isFinite(after)) after = -1
         let items = []
         if (after >= 0) {
-          items = queue.filter((u) => u.id > after).map((u) => ({ id: u.id, kind: u.kind || 'say', text: u.text, cn: u.cn || '', force: !!u.force, emotion: u.emotion || 'neutral', expr: u.expr || '', ts: u.ts || 0 }))
+          items = queue.filter((u) => u.id > after).map((u) => ({ id: u.id, kind: u.kind || 'say', text: u.text, cn: u.cn || '', force: !!u.force, emotion: u.emotion || 'neutral', expr: u.expr || '', ts: u.ts || 0, announce: u.announce === true, idle: u.idle === true }))
           const served = new Set(items.map((u) => u.id))
           queue = queue.filter((u) => !served.has(u.id))
         }

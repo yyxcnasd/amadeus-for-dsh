@@ -1887,6 +1887,10 @@
             revealHistory(u.cn || '')
           } else {
             enqueue(u.text, u.force === true, u.emotion || 'neutral', u.expr || '', u.cn || '')
+            // 非对话产生的回答（任务播报 / 空闲闲聊）：同步进对话区
+            if (u.announce === true || u.idle === true) {
+              addHistory({ role: 'assistant', cn: u.cn || u.text, announce: u.announce === true, idle: u.idle === true, t: Date.now() })
+            }
           }
         }
         if (items.length === 0 && data.cursor > cursor) cursor = data.cursor
