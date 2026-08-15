@@ -176,6 +176,14 @@ export function apply(ctx) {
     let suppressReportRemaining = 0
     // 任务执行模式（goal active）：chunk 只攒不读，消息收尾统一判断是否完成报告
     let taskMode = false
+    // 诊断环形缓冲（/amadeus/diag 可读，用于排查任务报告朗读等问题）
+    const diag = []
+    function diagLog(m) {
+      const e = { t: Date.now(), m }
+      diag.push(e)
+      if (diag.length > 400) diag.shift()
+      console.log('[amadeus] ' + m)
+    }
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -998,6 +1006,7 @@ export function apply(ctx) {
       const emo = EMOTIONS.indexOf(emotion) >= 0 ? emotion : 'neutral'
       // 播报留痕对话区（无论语音开关都记录）
       memory.history.push({ role: 'assistant', jp: text, cn: text, emotion: emo, announce: true, t: now })
+      diagLog('announce "' + String(text).slice(0, 24).replace(/\n/g, ' ') + '"')
       if (memory.history.length > 60) maybeCompactHistory()
       if (config.voiceOn !== true) return
       if (now - lastAnnounceAt < 8000) return
@@ -1886,10 +1895,17 @@ export function apply(ctx) {
       handler: async (req, res) => { sendJson(res, 200, { reports: clientReports }) },
     }))
 
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/amadeus/diag',
+      handler: async (req, res) => { sendJson(res, 200, { diag }) },
+    }))
+
     // ---------------- 助手消息 → 语音（流式：边生成边朗读） ----------------
     ctx.effect(() => ctx.on('session/event', (session, event) => {
       try {
         if (event === null || typeof event !== 'object') return
+        if (event.type !== 'assistant/chunk') diagLog('evt ' + event.type)
         if (event.type === 'user/message') {
           // 新任务开始：解除报告抑制，恢复正常朗读
           suppressReportRemaining = 0
@@ -1906,6 +1922,9 @@ export function apply(ctx) {
               // 只报完成：进对话区 + 播简短语音；抑制后续「任务结果」消息朗读
               announce('目標、達成。……まあ、当然でしょ？', 'excited')
               suppressReportRemaining = Math.max(suppressReportRemaining, 1)
+              diagLog('goal/change complete -> taskMode=false suppress=1 (announce)')
+            } else {
+              diagLog('goal/change op=' + op + ' -> taskMode=' + taskMode)
             }
           }
           return
@@ -1938,6 +1957,10 @@ export function apply(ctx) {
           if (pend.length === 0) return
           const parts = nextCompleteSentences(pend)
           if (parts.sentences.length > 0 && parts.consumed > 0) {
+            if (!ls._logged) {
+              ls._logged = true
+              diagLog('stream said "' + parts.sentences[0].slice(0, 20).replace(/\n/g, ' ') + (parts.sentences[0].length > 20 ? '…' : '') + '" (' + key + ')')
+            }
             pushUtterances(parts.sentences, false, emotionFor(parts.sentences[0]))
             ls.spokenLen += parts.consumed
           }
@@ -1966,6 +1989,15 @@ export function apply(ctx) {
         let text = bTexts.join(' ').replace(/\s+/g, ' ').trim()
         const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
         const isReport = isTaskCompleteMessage(msg)
+        // 诊断：记录该消息内容块类型与工具调用名，便于排查完成检测
+        let blockInfo = ''
+        for (let i = 0; i < blocks.length && i < 8; i++) {
+          const bb = blocks[i]
+          if (!bb || typeof bb !== 'object') { blockInfo += ',raw:' + String(bb); continue }
+          blockInfo += ',' + (bb.type || bb.kind || '?')
+          if (bb.type === 'tool-call' || bb.kind === 'tool-call') blockInfo += ':' + String(bb.name || '')
+        }
+        diagLog('assistant/msg blocks[' + (blocks.length || 0) + ']=' + (blockInfo || '(none)') + ' len=' + text.length + ' isReport=' + isReport + ' taskMode=' + taskMode + ' suppress=' + suppressReportRemaining)
 
         if (taskMode) {
           // 任务执行中：chunk 只攒不读 → 这里统一判断「完成报告」
@@ -1974,12 +2006,16 @@ export function apply(ctx) {
           if (suppressReportRemaining > 0) suppressReportRemaining = 0
           liveStream = null
           // 完成报告（含 goal 完成工具调用）或完成后抑制期 → 整条丢弃，只播报
-          if (isReport || wasSuppressed) return
+          if (isReport || wasSuppressed) {
+            diagLog(isReport ? 'taskMode DROP report (tool-call)' : 'taskMode DROP suppressed')
+            return
+          }
           let say = (buf && buf.trim().length > 0) ? buf : text
           say = say.replace(/\s+/g, ' ').trim()
           if (say.length === 0) return
           if (say.length > cap) say = say.slice(0, cap)
           lastSpokenText = say
+          diagLog('taskMode speak "' + say.slice(0, 20).replace(/\n/g, ' ') + (say.length > 20 ? '…' : '') + '"')
           pushUtterances(splitSentences(say), false, emotionFor(say))
           return
         }
@@ -1988,11 +2024,13 @@ export function apply(ctx) {
         if (isReport) {
           suppressReportRemaining = 0
           liveStream = null
+          diagLog('normal DROP report (tool-call)')
           return
         }
         if (suppressReportRemaining > 0) {
           suppressReportRemaining = 0
           liveStream = null
+          diagLog('normal DROP suppressed')
           return
         }
         if (text.length === 0) return
