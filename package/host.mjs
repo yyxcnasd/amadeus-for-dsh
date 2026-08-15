@@ -1897,7 +1897,7 @@ export function apply(ctx) {
 
     ctx.effect(() => webServer.register({
       kind: 'exact',
-      path: '/amadeus/diag',
+      path: '/amadeus/diaglog',
       handler: async (req, res) => { sendJson(res, 200, { diag }) },
     }))
 
