@@ -145,6 +145,8 @@ return {
     let lastSpokenMessageId = null
     // 流式朗读状态：assistant/chunk 边生成边读，assistant/message 只补未读尾部
     let liveStream = null  // { key, buffer, spokenLen }
+    // 任务完成后的「报告抑制」：只播完成播报，不朗读整个任务结果。被用户消息或下一条助手消息消费。
+    let suppressReportRemaining = 0
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -263,6 +265,27 @@ return {
         }
       }
       return { sentences: out, consumed: lastEnd }
+    }
+
+    // 判断一条助手消息是否是「任务收尾」：内含 goal 完成类工具调用 → 不朗读正文，只报完成。
+    function isTaskCompleteMessage(msg) {
+      if (!msg || !Array.isArray(msg.content)) return false
+      for (let i = 0; i < msg.content.length; i++) {
+        const b = msg.content[i]
+        if (b === null || typeof b !== 'object' || b.type !== 'tool-call') continue
+        const name = String(b.name || '')
+        if (name === 'update_goal' || name === 'goal.complete' || /goal.*complete/i.test(name)) {
+          try {
+            const a = JSON.parse(String(b.arguments || '{}'))
+            if (Object.prototype.hasOwnProperty.call(a, 'action')) {
+              if (a.action === 'complete' || a.action === 'blocked') return true
+            } else {
+              return true
+            }
+          } catch (e) { /* 解析失败按完成处理 */ return true }
+        }
+      }
+      return false
     }
 
     function emotionFor(text) {
@@ -1827,13 +1850,19 @@ return {
     ctx.effect(() => ctx.on('session/event', (session, event) => {
       try {
         if (event === null || typeof event !== 'object') return
+        if (event.type === 'user/message') {
+          // 新任务开始：解除报告抑制，恢复正常朗读
+          suppressReportRemaining = 0
+          return
+        }
         if (config.voiceOn !== true) return
         const data = event.data
         if (data === null || typeof data !== 'object') return
         const sessKey = (session && typeof session === 'object' && (session.id || session.sessionId)) ? String(session.id || session.sessionId) : 'x'
 
-        // ① 流式 chunk：形成完整句立即朗读，不看完整条
+        // ① 流式 chunk：形成完整句立即朗读；任务完成后的「报告」不读，只等播报
         if (event.type === 'assistant/chunk') {
+          if (suppressReportRemaining > 0) return
           const chunk = data.chunk
           if (!chunk || chunk.type !== 'text-delta' || typeof chunk.text !== 'string' || chunk.text.length === 0) return
           const key = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
@@ -1857,6 +1886,17 @@ return {
         if (event.type !== 'assistant/message') return
         const msg = data.message
         if (msg === null || typeof msg !== 'object') return
+        // 任务收尾：内含 goal 完成类工具调用，或正处于完成后的报告抑制期 → 不朗读正文，只报完成
+        if (isTaskCompleteMessage(msg)) {
+          suppressReportRemaining = 0
+          liveStream = null
+          return
+        }
+        if (suppressReportRemaining > 0) {
+          suppressReportRemaining = 0
+          liveStream = null
+          return
+        }
         const mid = typeof msg.id === 'string' ? msg.id : null
         const key2 = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
         let spokenPrefix = ''
@@ -1908,7 +1948,11 @@ return {
     ctx.effect(() => ctx.on('goal/changed', (payload) => {
       try {
         const g = payload && payload.change && payload.change.goal
-        if (g && g.phase === 'complete') announce('目標、達成。……まあ、当然でしょ？', 'excited')
+        if (g && g.phase === 'complete') {
+          announce('目標、達成。……まあ、当然でしょ？', 'excited')
+          // 只报完成：抑制之后到达的「任务结果」消息朗读（下一条助手消息消费）
+          suppressReportRemaining = Math.max(suppressReportRemaining, 1)
+        }
       } catch (e) { /* ignore */ }
     }))
 
