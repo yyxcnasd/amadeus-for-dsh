@@ -304,6 +304,17 @@ export function apply(ctx) {
       return { sentences: out, consumed: lastEnd }
     }
 
+    // 判断一条消息是否是「干活」消息：含任意工具调用块 → 不朗读（任务/过程/结果都静默，只保留完成播报）
+    function messageHasToolCall(msg) {
+      if (!msg || !Array.isArray(msg.content)) return false
+      for (let i = 0; i < msg.content.length; i++) {
+        const b = msg.content[i]
+        if (b === null || typeof b !== 'object') continue
+        if (b.type === 'tool-call' || b.kind === 'tool-call') return true
+      }
+      return false
+    }
+
     // 判断一条助手消息是否是「任务收尾」：内含 goal 完成类工具调用 → 不朗读正文，只报完成。
     function isTaskCompleteMessage(msg) {
       if (!msg || !Array.isArray(msg.content)) return false
@@ -1940,22 +1951,33 @@ export function apply(ctx) {
         if (data === null || typeof data !== 'object') return
         const sessKey = (session && typeof session === 'object' && (session.id || session.sessionId)) ? String(session.id || session.sessionId) : 'x'
 
-        // ① 流式 chunk：只攒不读（消息收尾统一判断：完成报告丢弃，其余整段朗读）
+        // ① 流式 chunk：只攒不读；顺带标记「干活」（出现工具调用 chunk）并记录工具名
         // 注：流式朗读无法区分「任务报告」与「聊天回复」（完成工具调用总是最后到达）。
-        // 为保证“任务完成只报完成”，一律收尾整段朗读——聊天仅有极短延迟，但报告绝不读。
+        // 因此一律收尾判断：含工具调用=干活消息不读；纯对话消息收尾整段朗读。
         if (event.type === 'assistant/chunk') {
           if (suppressReportRemaining > 0) return
           const chunk = data.chunk
-          if (!chunk || chunk.type !== 'text-delta' || typeof chunk.text !== 'string' || chunk.text.length === 0) return
+          if (chunk === null || typeof chunk !== 'object') return
           const key = sessKey + ':' + (typeof data.turn === 'number' ? data.turn : 0) + ':' + (typeof data.step === 'number' ? data.step : 0)
           if (liveStream === null || liveStream.key !== key) {
             liveStream = { key, buffer: '', spokenLen: 0 }
           }
-          liveStream.buffer += chunk.text
+          const ls = liveStream
+          if (chunk.type === 'tool-call-delta') {
+            ls.sawToolCall = true
+            diagLog('chunk tool-call-delta name=' + String(chunk.name || '') + ' id=' + String(chunk.id || ''))
+            return
+          }
+          if (chunk.type !== 'text-delta') {
+            diagLog('chunk type=' + String(chunk.type))
+            return
+          }
+          if (typeof chunk.text !== 'string' || chunk.text.length === 0) return
+          ls.buffer += chunk.text
           return
         }
 
-        // ② 完整消息：整段朗读；含完成工具调用 → 丢弃，只报完成
+        // ② 完整消息：纯对话消息整段朗读；含工具调用的干活消息一律不读（含完成报告）
         if (event.type !== 'assistant/message') return
         const msg = data.message
         if (msg === null || typeof msg !== 'object') return
@@ -1977,6 +1999,8 @@ export function apply(ctx) {
         let text = bTexts.join(' ').replace(/\s+/g, ' ').trim()
         const cap = typeof config.maxCharsPerTurn === 'number' ? config.maxCharsPerTurn : 1400
         const isReport = isTaskCompleteMessage(msg)
+        const hadToolChunk = liveStream !== null && liveStream.sawToolCall === true
+        const hasTool = messageHasToolCall(msg) || hadToolChunk || (msg !== null && typeof msg === 'object' && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0)
 
         // 诊断：记录消息内容块类型与工具调用名
         let blockInfo = ''
@@ -1986,7 +2010,7 @@ export function apply(ctx) {
           blockInfo += ',' + (bb.type || bb.kind || '?')
           if (bb.type === 'tool-call' || bb.kind === 'tool-call') blockInfo += ':' + String(bb.name || '')
         }
-        diagLog('assistant/msg blocks[' + (blocks.length || 0) + ']=' + (blockInfo || '(none)') + ' len=' + text.length + ' isReport=' + isReport + ' suppress=' + suppressReportRemaining)
+        diagLog('assistant/msg blocks[' + (blocks.length || 0) + ']=' + (blockInfo || '(none)') + ' len=' + text.length + ' isReport=' + isReport + ' hasTool=' + hasTool + ' suppress=' + suppressReportRemaining)
 
         const buf = liveStream !== null ? liveStream.buffer : ''
         liveStream = null
@@ -2000,6 +2024,11 @@ export function apply(ctx) {
         if (suppressReportRemaining > 0) {
           suppressReportRemaining = 0
           diagLog('DROP suppressed')
+          return
+        }
+        if (hasTool) {
+          // 干活消息：不朗读（可能含任务过程/结果文本）；完成播报另行处理
+          diagLog('SKIP work message (tool-call present) len=' + ((buf && buf.trim()) ? buf.length : text.length))
           return
         }
         let say = (buf && buf.trim().length > 0) ? buf : text
