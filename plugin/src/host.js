@@ -1868,6 +1868,21 @@ return {
           suppressReportRemaining = 0
           return
         }
+        // 目标状态变更走「会话事件流」——goal/changed 是 agent 作用域事件，全局插件收不到。
+        if (event.type === 'goal/change') {
+          const gd = event.data
+          if (gd && typeof gd === 'object' && typeof gd.operation === 'string') {
+            const op = gd.operation
+            if (op === 'create' || op === 'resume' || op === 'block' || op === 'edit') taskMode = true
+            else if (op === 'complete' || op === 'pause' || op === 'clear') taskMode = false
+            if (op === 'complete') {
+              // 只报完成：进对话区 + 播简短语音；抑制后续「任务结果」消息朗读
+              announce('目標、達成。……まあ、当然でしょ？', 'excited')
+              suppressReportRemaining = Math.max(suppressReportRemaining, 1)
+            }
+          }
+          return
+        }
         if (config.voiceOn !== true) return
         const data = event.data
         if (data === null || typeof data !== 'object') return
@@ -1984,21 +1999,8 @@ return {
     }))
 
     // ---------------- 事件播报 ----------------
-    ctx.effect(() => ctx.on('goal/changed', (payload) => {
-      try {
-        const g = payload && payload.change && payload.change.goal
-        if (!g || typeof g !== 'object') return
-        if (g.phase === 'active') {
-          // 任务开始执行：进入任务模式（chunk 只攒不读，消息收尾统一判断完成报告）
-          taskMode = true
-        } else if (g.phase === 'complete') {
-          taskMode = false
-          announce('目標、達成。……まあ、当然でしょ？', 'excited')
-          // 只报完成：抑制之后到达的「任务结果」消息朗读（下一条助手消息消费）
-          suppressReportRemaining = Math.max(suppressReportRemaining, 1)
-        }
-      } catch (e) { /* ignore */ }
-    }))
+    // 注：goal 完成已由 session 事件流里的 goal/change 处理（见上方监听器）——
+    // goal/changed 是 agent 作用域事件，全局插件收不到，勿再依赖。
 
     ctx.effect(() => ctx.on('subagent/end', (info) => {
       try {
