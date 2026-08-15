@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMADEUS</title>
+<link rel="stylesheet" href="/amadeus/web/panel.css">
+</head>
+<body>
+  <div id="phone">
+    <div id="screen">
+      <canvas id="amadeus-canvas"></canvas>
+      <img id="amadeus-img" alt="Makise Kurisu" hidden>
+      <div id="amadeus-placeholder" hidden>
+        <svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+          <path d="M100 30 C 60 30 40 70 38 130 C 36 180 48 230 100 230 C 152 230 164 180 162 130 C 160 70 140 30 100 30 Z" fill="#8c3b2e"/>
+          <path d="M55 150 L100 118 L145 150 L160 240 L40 240 Z" fill="#f2f2f2" stroke="#d8d8d8" stroke-width="1.5"/>
+          <path d="M96 140 L104 140 L110 170 L100 182 L90 170 Z" fill="#c0392b"/>
+          <path d="M70 140 L100 165 L130 140 L124 170 L100 158 L76 170 Z" fill="#e8e8e8"/>
+          <ellipse cx="100" cy="105" rx="42" ry="48" fill="#ffe9dc"/>
+          <path d="M60 90 C 60 55 90 42 100 42 C 112 42 140 56 140 90 C 130 66 112 60 100 62 C 86 60 70 66 60 90 Z" fill="#a3433b"/>
+          <ellipse cx="82" cy="108" rx="8" ry="6" fill="#4a6fa5"/>
+          <ellipse cx="118" cy="108" rx="8" ry="6" fill="#4a6fa5"/>
+          <circle cx="83" cy="107" r="2.5" fill="#1c2b3a"/>
+          <circle cx="119" cy="107" r="2.5" fill="#1c2b3a"/>
+          <ellipse cx="70" cy="122" rx="6" ry="3.5" fill="#f5b7a1" opacity="0.8"/>
+          <ellipse cx="130" cy="122" rx="6" ry="3.5" fill="#f5b7a1" opacity="0.8"/>
+          <path d="M92 128 Q100 134 108 128" stroke="#b26a5a" stroke-width="2" fill="none"/>
+          <path d="M100 42 Q 108 26 118 24 Q 110 32 108 44 Z" fill="#a3433b"/>
+        </svg>
+      </div>
+
+      <div id="screen-clock">--:--</div>
+
+      <button id="close-btn" title="关闭 Amadeus 系统">×</button>
+      <button id="calib-btn" title="L2D 校准" hidden>⚙</button>
+
+      <div id="boot">
+        <div class="boot-logo">
+          <img id="boot-logo-img" src="/amadeus/assets/img/boot/logo1.png" alt="AMADEUS">
+        </div>
+        <div class="boot-title">AMADEUS</div>
+        <div class="boot-lines">
+          <div class="boot-line" id="boot-line1"></div>
+          <div class="boot-line" id="boot-line2"></div>
+          <div class="boot-line" id="boot-line3"></div>
+        </div>
+        <div class="boot-loading">Loading Amadeus System...</div>
+        <div class="boot-version">v1.0.0</div>
+      </div>
+
+      <div id="unlock" class="hidden">
+        <button id="unlock-btn">🔊 点击以启用语音</button>
+      </div>
+
+      <div id="call-overlay" class="hidden">
+        <div id="call-portrait-wrap">
+          <img id="call-portrait" src="/amadeus/assets/img/kurisu/sided_pleasant1.png" alt="Makise Kurisu">
+        </div>
+        <div class="call-name">AMADEUS</div>
+        <div class="call-sub">着信中…</div>
+        <div class="call-btns">
+          <button id="call-accept" class="call-accept">応答</button>
+          <button id="call-deny" class="call-deny">拒否</button>
+        </div>
+      </div>
+
+      <div id="errline" class="hidden"></div>
+      <div id="status-chip">● connecting…</div>
+    </div>
+
+    <div id="hinge"><span class="hinge-l"></span><span class="hinge-r"></span></div>
+
+    <div id="keypad">
+      <div id="history"></div>
+      <div id="chat-row">
+        <button id="chat-mic" title="语音输入" class="mic-btn">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+            <path d="M5 10v1a7 7 0 0 0 14 0v-1"></path>
+            <line x1="12" y1="18" x2="12" y2="22"></line>
+          </svg>
+        </button>
+        <button id="chat-lang" title="识别语言">中</button>
+        <input id="chat-input" type="text" placeholder="和 Amadeus 说话…" autocomplete="off">
+        <button id="chat-send" title="发送">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="ring-audio" loop preload="none">
+    <source src="/amadeus/assets/audio/ringtone_gate_of_steiner.ogg" type="audio/ogg">
+    <source src="/amadeus/assets/audio/ring.mp3" type="audio/mpeg">
+  </audio>
+
+  <script src="/amadeus/web/emotion.js"></script>
+  <script src="/amadeus/web/panel.js"></script>
+</body>
+</html>

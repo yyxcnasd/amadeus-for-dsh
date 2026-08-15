@@ -1,0 +1,20 @@
+{
+  "name": "amadeus-for-dsh",
+  "version": "2.0.0",
+  "description": "Steins;Gate 0 Amadeus (Makise Kurisu) 助手：Live2D 翻盖手机 + 日语语音 + 长期记忆，DeepSeek Harness 插件",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./host.mjs",
+    "./index.js": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "license": "MIT"
+}

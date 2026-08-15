@@ -1,0 +1,18 @@
+{
+  "models": [
+    {
+      "url": "/amadeus/assets/live2d/kurisu/kurisu.model.json",
+      "format": "cubism2",
+      "scale": 1,
+      "layout": {
+        "scale": 1,
+        "x": 0,
+        "y": 0,
+        "yRatio": 0.62
+      },
+      "note": "local BaiduNetdisk kurisu"
+    }
+  ],
+  "image": "",
+  "placeholder": true
+}

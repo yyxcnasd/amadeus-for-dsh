@@ -1,0 +1,24 @@
+# 本地运行数据（不进版本库）
+memory/
+tmp/
+tools/__pycache__/
+__pycache__/
+*.pyc
+
+# 构建/发行产物（make_dist.ps1 生成，发到 GitHub Releases）
+*.zip
+*.tgz
+
+# 节点依赖
+node_modules/
+package/node_modules/
+
+# 本地模型/虚拟环境（可选通道下载物）
+tools/voicevox/
+tools/aqua/
+tools/kokoro-venv/
+tools/qwen-venv/
+
+# 其它
+.DS_Store
+Thumbs.db

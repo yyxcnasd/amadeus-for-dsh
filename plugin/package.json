@@ -1,0 +1,10 @@
+{
+  "name": "@amadeus/dsh-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Amadeus (Steins;Gate 0) — Makise Kurisu Live2D + voice + persona plugin for DeepSeek Harness",
+  "license": "MIT",
+  "scripts": {
+    "fetch-assets": "powershell -ExecutionPolicy Bypass -File ../tools/fetch-assets.ps1"
+  }
+}

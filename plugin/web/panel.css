@@ -1,0 +1,671 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #200f13; }
+body {
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+
+/* ============ 红色翻盖手机 ============ */
+#phone {
+  flex: 1;
+  max-width: 320px;
+  margin: 8px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #d63c2e 0%, #a91f14 14%, #8e1a12 45%, #7c160f 78%, #6e130c 100%);
+  border: 1px solid #e8695a;
+  border-radius: 22px 22px 26px 26px;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+/* ---------- 上屏 ---------- */
+#screen {
+  flex: 0 0 54%;
+  margin: 10px 10px 0;
+  position: relative;
+  background: #0a0d13;
+  border: 4px solid #57100b;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 0 26px rgba(0, 0, 0, 0.7);
+}
+#screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 62% 46% at 50% 88%, rgba(198, 62, 52, 0.24), transparent 70%),
+    radial-gradient(ellipse 90% 70% at 50% 115%, rgba(90, 20, 26, 0.5), transparent 75%),
+    linear-gradient(180deg, #140b10 0%, #10080c 45%, #0a0609 100%);
+  z-index: 0;
+}
+#screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 130% 105% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.6) 100%);
+  z-index: 1;
+}
+#screen canvas, #screen img, #screen #amadeus-placeholder { position: relative; z-index: 2; }
+#amadeus-placeholder { height: 100%; display: flex; align-items: center; justify-content: center; }
+#amadeus-placeholder svg { height: 92%; display: block; animation: amad-float 4.5s ease-in-out infinite; filter: drop-shadow(0 6px 18px rgba(0,0,0,.4)); }
+#amadeus-img { max-height: 94%; max-width: 94%; object-fit: contain; animation: amad-float 4.5s ease-in-out infinite; }
+@keyframes amad-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+#screen-clock {
+  position: absolute;
+  top: 6px;
+  right: 30px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: #e8e2da;
+  opacity: 0.85;
+  z-index: 3;
+}
+
+#close-btn {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbb3ae;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 5;
+  padding: 0;
+}
+#close-btn:hover { background: rgba(224, 96, 79, 0.5); color: #fff; }
+
+#calib-btn {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbb3ae;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 5;
+  padding: 0;
+}
+#calib-btn:hover { background: rgba(224, 96, 79, 0.5); color: #fff; }
+#calib-btn.active { background: #b2534a; color: #fff; }
+
+#boot {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 90% 70% at 50% 30%, rgba(120, 50, 22, 0.35), transparent 70%), linear-gradient(180deg, rgba(26, 11, 7, 0.97), rgba(12, 8, 8, 0.97));
+  color: #7fd47f;
+  font-family: Consolas, "Courier New", monospace;
+  padding: 18px 16px;
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  transition: opacity 0.6s ease;
+  z-index: 7;
+}
+#boot.off { opacity: 0; pointer-events: none; }
+.boot-logo {
+  width: 132px;
+  height: 132px;
+  position: relative;
+  animation: amad-logo-fadein 1.6s ease-out both;
+}
+.boot-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 22px rgba(232, 105, 42, 0.55));
+}
+@keyframes amad-logo-fadein {
+  0% { opacity: 0; transform: scale(0.82); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.boot-title {
+  color: #ff9a62;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 6px;
+  margin-top: 16px;
+  margin-bottom: 14px;
+  animation: amad-logo-fadein 1.2s ease-out 0.5s both;
+}
+.boot-lines {
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+.boot-line { white-space: pre-wrap; word-break: break-all; text-align: center; }
+.boot-line::after { content: "▌"; animation: amad-blink 0.9s steps(1) infinite; }
+.boot-loading {
+  margin-top: 12px;
+  color: #d2691e;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.boot-version {
+  margin-top: 6px;
+  color: #8b4513;
+  font-size: 11px;
+}
+@keyframes amad-blink { 50% { opacity: 0; } }
+
+#unlock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 16, 0.55);
+  z-index: 6;
+}
+#unlock.hidden { display: none; }
+#unlock-btn {
+  background: #b2534a;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+#unlock-btn:hover { background: #c65f55; }
+
+/* ---------- 来电（原版 Amadeus 风格：红莉栖立绘 + 着信） ---------- */
+#call-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 8px 8px 10px;
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 18%, rgba(214, 60, 46, 0.28), transparent 70%),
+    linear-gradient(180deg, rgba(18, 6, 10, 0.94), rgba(46, 11, 13, 0.97));
+  z-index: 9;
+}
+#call-overlay.hidden { display: none; }
+#call-portrait-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  animation: amad-call-in 0.55s ease-out both;
+}
+#call-portrait {
+  max-width: 88%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 16px rgba(255, 130, 110, 0.35)) drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55));
+}
+@keyframes amad-call-in {
+  0% { opacity: 0; transform: translateY(14px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.call-name {
+  color: #ffb4ab;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-shadow: 0 0 12px rgba(255, 130, 120, 0.6);
+  animation: amad-call-in 0.4s ease-out 0.1s both;
+}
+.call-sub {
+  color: #cbb3ae;
+  font-size: 11px;
+  animation: amad-blink 1.2s steps(1) infinite;
+}
+.call-btns { display: flex; gap: 20px; margin-top: 8px; }
+.call-accept, .call-deny {
+  border: 0;
+  border-radius: 999px;
+  width: 64px;
+  height: 64px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.call-accept:hover, .call-deny:hover { transform: scale(1.06); }
+.call-accept { background: #2f8f4e; box-shadow: 0 4px 16px rgba(47, 143, 78, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.call-deny { background: #b53a2e; box-shadow: 0 4px 16px rgba(181, 58, 46, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+.call-accept:hover { background: #39a55b; }
+.call-deny:hover { background: #c94a3c; }
+
+/* ---------- 转轴 ---------- */
+#hinge {
+  height: 15px;
+  margin: 0 12px;
+  position: relative;
+  background: linear-gradient(180deg, #4d0c07 0%, #300603 45%, #54100a 100%);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  flex: none;
+}
+.hinge-l, .hinge-r {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #d88a7e, #5f130c);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+}
+.hinge-l { left: 4px; }
+.hinge-r { right: 4px; }
+
+/* ---------- 下半部分：聊天记录 ---------- */
+#keypad {
+  flex: 1;
+  min-height: 0;
+  margin: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(88, 13, 8, 0.72), rgba(38, 5, 3, 0.9));
+  border-radius: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+  z-index: 2;
+}
+
+#history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+/* .msg 系列规则统一见文件末尾 v12 气泡样式，这里只保留空态样式 */
+.msg-empty { color: #8a6a68; font-size: 11px; text-align: center; margin-top: 16px; }
+
+#chat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(22, 7, 5, 0.55);
+  flex: none;
+}
+#chat-row.hidden { display: none; }
+#chat-row button {
+  border: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2e4e1;
+  border-radius: 7px;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+  line-height: 1;
+  padding: 0;
+}
+#chat-row button:hover { background: rgba(255, 255, 255, 0.2); }
+#chat-row button.mic-btn svg { display: block; margin: auto; pointer-events: none; }
+#chat-row button.rec { background: #b53a2e; animation: amad-pulse 1s ease-in-out infinite; }
+#chat-row button.rec svg { color: #fff; }
+@keyframes amad-pulse { 50% { box-shadow: 0 0 0 5px rgba(181, 58, 46, 0.25); } }
+#chat-lang { font-size: 10px !important; }
+#chat-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: #f2e4e1;
+  font-size: 12px;
+  line-height: 20px;
+}
+#chat-input::placeholder { color: #8a6a68; }
+
+/* ---------- 状态 ---------- */
+#status-chip {
+  position: absolute;
+  left: 8px;
+  bottom: 4px;
+  font-size: 9px;
+  color: #6f5d59;
+  font-family: Consolas, monospace;
+  z-index: 3;
+}
+#status-chip.off { color: #e5484d; }
+
+#errline {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 20px;
+  background: rgba(80, 20, 24, 0.92);
+  color: #ffb4ab;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 111, 97, 0.5);
+  z-index: 5;
+  word-break: break-all;
+}
+#errline.hidden { display: none; }
+
+/* ============ v11 UI 精修：更接近原作红色翻盖机质感 ============ */
+html, body { background: #160a0d; }
+body {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -5%, rgba(214, 60, 46, 0.22), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 50% 105%, rgba(120, 20, 12, 0.35), transparent 70%),
+    #160a0d;
+}
+#phone {
+  position: relative;
+  max-width: 332px;
+  margin: 10px;
+  border-radius: 30px 30px 34px 34px;
+  border: 1px solid rgba(255, 170, 150, 0.55);
+  background:
+    linear-gradient(180deg, #e54838 0%, #c52a1c 8%, #9e180e 30%, #7e120a 62%, #5f0c06 100%);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.65),
+    0 2px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -3px 0 rgba(0, 0, 0, 0.55) inset,
+    0 0 0 2px rgba(120, 16, 10, 0.9);
+}
+#phone::before {
+  content: "";
+  position: absolute;
+  left: 6px; right: 6px; top: 4px; height: 3px;
+  background: rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  pointer-events: none;
+}
+#screen {
+  flex-basis: 54%;
+  margin: 12px 12px 0;
+  background: #05070c;
+  border: 3px solid #3d0b07;
+  border-radius: 18px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 34px rgba(0, 0, 0, 0.85),
+    0 0 0 2px #7c1610,
+    0 10px 22px rgba(0, 0, 0, 0.45);
+}
+#screen::before {
+  background:
+    radial-gradient(ellipse 62% 46% at 50% 88%, rgba(198, 62, 52, 0.18), transparent 70%),
+    radial-gradient(ellipse 90% 70% at 50% 115%, rgba(90, 20, 26, 0.4), transparent 75%),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.018) 0px, rgba(255, 255, 255, 0.018) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #0d0710 0%, #09050b 45%, #060409 100%);
+}
+#screen::after {
+  background:
+    radial-gradient(ellipse 140% 110% at 50% 42%, transparent 52%, rgba(0, 0, 0, 0.7) 100%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.09) 0%, transparent 18%, transparent 82%, rgba(255, 255, 255, 0.05) 100%);
+}
+#screen-clock {
+  top: 7px;
+  right: 34px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #f3e9e6;
+  text-shadow: 0 0 6px rgba(255, 154, 98, 0.35);
+}
+#close-btn, #calib-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+#close-btn { top: 5px; right: 7px; }
+#calib-btn { top: 5px; left: 7px; }
+
+/* 开机画面 */
+#boot {
+  background:
+    radial-gradient(ellipse 70% 42% at 50% 26%, rgba(220, 90, 40, 0.32), transparent 70%),
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0px, rgba(0, 0, 0, 0.16) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, rgba(30, 13, 8, 0.97), rgba(10, 7, 8, 0.98));
+}
+.boot-logo {
+  width: 120px;
+  height: 120px;
+}
+.boot-logo img {
+  filter: drop-shadow(0 0 18px rgba(255, 120, 60, 0.55)) drop-shadow(0 0 42px rgba(180, 40, 20, 0.4));
+}
+.boot-title {
+  font-size: 16px;
+  letter-spacing: 8px;
+  color: #ff9a62;
+  text-shadow: 0 0 12px rgba(255, 120, 60, 0.6);
+}
+.boot-loading {
+  margin-top: 14px;
+  color: #e07830;
+  font-size: 12px;
+}
+.boot-loading::after {
+  content: "";
+  display: block;
+  width: 132px;
+  height: 3px;
+  margin: 10px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e07830, #ff9a62);
+  box-shadow: 0 0 8px rgba(224, 120, 48, 0.7);
+  animation: amad-progress 2.5s linear forwards;
+}
+@keyframes amad-progress {
+  0% { width: 0%; opacity: 0.9; }
+  100% { width: 132px; opacity: 0.9; }
+}
+.boot-version { color: #b06030; }
+
+/* 解锁按钮 */
+#unlock { background: rgba(5, 7, 12, 0.6); backdrop-filter: blur(3px); }
+#unlock-btn {
+  background: linear-gradient(180deg, #c65f55, #9e2b20);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  letter-spacing: 1px;
+}
+#unlock-btn:hover { background: linear-gradient(180deg, #d46f64, #ad3529); }
+
+/* 来电（覆盖前序规则，保留立绘布局） */
+#call-overlay {
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 18%, rgba(214, 60, 46, 0.28), transparent 70%),
+    linear-gradient(180deg, rgba(18, 6, 10, 0.94), rgba(46, 11, 13, 0.97));
+  backdrop-filter: blur(3px);
+}
+.call-name { text-shadow: 0 0 12px rgba(255, 130, 120, 0.6); }
+.call-accept, .call-deny { transition: transform 0.15s ease; }
+.call-accept:hover, .call-deny:hover { transform: scale(1.06); }
+
+/* 下半键盘区 */
+#keypad {
+  margin: 0 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(96, 14, 8, 0.85), rgba(30, 4, 2, 0.94));
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* 聊天气泡 */
+#history { padding: 10px 9px; gap: 8px; }
+.msg {
+  max-width: 88%;
+  padding: 7px 11px;
+  border-radius: 13px;
+  font-size: 12px;
+  line-height: 1.55;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.msg.user {
+  background: linear-gradient(135deg, #d14732 0%, #8e1a12 100%);
+  color: #fff3ef;
+  border-bottom-right-radius: 4px;
+  border: 1px solid rgba(255, 170, 150, 0.28);
+}
+.msg.amadeus {
+  /* v12 起：头像和气泡分家，这里只做对齐容器，具体气泡样式看 .msg.amadeus .bubble */
+  align-self: flex-start;
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+.msg.call {
+  background: rgba(181, 58, 46, 0.28);
+  border: 1px dashed rgba(255, 150, 140, 0.55);
+  color: #ffc0b8;
+  font-size: 11px;
+}
+.msg .time { font-size: 9px; opacity: 0.5; }
+
+/* 输入行 */
+#chat-row {
+  gap: 8px;
+  padding: 8px;
+  background: rgba(12, 5, 3, 0.7);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(6px);
+}
+#chat-row button {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+#chat-row button:hover { background: rgba(255, 255, 255, 0.22); }
+#chat-row button:active { transform: scale(0.92); }
+#chat-input {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 6px 10px;
+  line-height: 18px;
+  font-size: 12px;
+}
+#chat-input:focus { background: rgba(0, 0, 0, 0.35); box-shadow: 0 0 0 1px rgba(224, 96, 79, 0.55); }
+
+/* 状态条 */
+#status-chip {
+  left: 10px;
+  bottom: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(8, 11, 16, 0.65);
+  color: #c8b5b0;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(4px);
+}
+
+/* ============ v12 聊天气泡对齐修复：头像与气泡彻底分家 ============ */
+.msg {
+  max-width: 88%;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  border: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.msg.user { align-self: flex-end; background: transparent; border: 0; padding: 0; }
+.msg.amadeus { align-self: flex-start; background: transparent; border: 0; padding: 0; }
+.msg-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+  display: block;
+  object-fit: contain;
+  padding: 4px;
+  box-sizing: border-box;
+  background: rgba(30, 10, 8, 0.85);
+  border: 1px solid rgba(255, 170, 150, 0.28);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.msg .bubble {
+  max-width: calc(100% - 42px);
+  padding: 7px 11px;
+  border-radius: 13px;
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.msg.user .bubble {
+  max-width: 100%;
+  background: linear-gradient(135deg, #d14732 0%, #8e1a12 100%);
+  color: #fff3ef;
+  border-bottom-right-radius: 4px;
+  border: 1px solid rgba(255, 170, 150, 0.28);
+}
+.msg.amadeus .bubble {
+  background: rgba(255, 255, 255, 0.09);
+  color: #f4e6e3;
+  border-bottom-left-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+.msg.call {
+  display: block;
+  align-self: center;
+  text-align: center;
+  padding: 6px 10px;
+  background: rgba(181, 58, 46, 0.28);
+  border: 1px dashed rgba(255, 150, 140, 0.55);
+  border-radius: 10px;
+  color: #ffc0b8;
+  font-size: 11px;
+}
+.msg .time { display: block; margin-top: 3px; font-size: 9px; opacity: 0.5; }
