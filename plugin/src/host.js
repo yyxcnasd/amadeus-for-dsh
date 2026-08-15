@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // Amadeus for DSH — Host half (v7)
 // 功能：
 //   - 持久记忆系统（短长期历史 / 事实提取，跨会话、跨重启）
@@ -145,6 +145,8 @@ return {
     let lastSpokenMessageId = null
     // 完成播报幂等：同一任务只报一次（用户新消息/新目标创建时复位）
     let completionAnnounced = false
+    // 当前回合是否出现过工具调用（turn/end 时若为真 → 报「完成」）
+    let turnHadTools = false
     let lastSpokenText = ''
     let queue = []
     let nextId = 1
@@ -945,23 +947,25 @@ return {
       scheduleWarmTts()
     }
 
-    function announce(text, emotion) {
+    function announce(jp, cn, emotion) {
       const now = Date.now()
       const emo = EMOTIONS.indexOf(emotion) >= 0 ? emotion : 'neutral'
-      // 播报留痕对话区（无论语音开关都记录）
-      memory.history.push({ role: 'assistant', jp: text, cn: text, emotion: emo, announce: true, t: now })
+      const cnText = (typeof cn === 'string' && cn.length > 0) ? cn : jp
+      // 播报留痕对话区（无论语音开关都记录；对话区显示中文 cn）
+      memory.history.push({ role: 'assistant', jp, cn: cnText, emotion: emo, announce: true, t: now })
       if (memory.history.length > 60) maybeCompactHistory()
       if (config.voiceOn !== true) return
       if (now - lastAnnounceAt < 8000) return
       lastAnnounceAt = now
-      pushUtterances([text], true, emotion, text, { announce: true })
+      pushUtterances([jp], true, emotion, cnText, { announce: true })
     }
 
-    // 任务完成：只报一次「完成」（进对话区 + 播简短语音）。goal 事件与完成报告消息都可能触发。
+    // 任务完成：只报一次「完成」（语音说日文、对话区记中文）。
+    // 触发来源：goal/change complete、含完成工具调用的消息、或「有工具活动的回合结束」（turn/end）。
     function notifyComplete() {
       if (completionAnnounced) return
       completionAnnounced = true
-      announce('目標、達成。……まあ、当然でしょ？', 'excited')
+      announce('目標、達成。……まあ、当然でしょ？', '目标达成。……那是当然的吧？', 'excited')
     }
 
     // ---------------- AI 调用（独立 key 优先，llm 服务兜底） ----------------
@@ -1853,6 +1857,21 @@ return {
         if (event.type === 'user/message') {
           // 新任务/新对话开始：解锁完成播报
           completionAnnounced = false
+          turnHadTools = false
+          return
+        }
+        if (event.type === 'turn/start') {
+          turnHadTools = false
+          return
+        }
+        if (event.type === 'tool/call' || event.type === 'tool/result') {
+          turnHadTools = true
+          return
+        }
+        if (event.type === 'turn/end') {
+          // 本回合动用了工具 → 视为一次工作回合结束，报「完成」
+          if (turnHadTools) notifyComplete()
+          turnHadTools = false
           return
         }
         if (event.type === 'goal/change') {
@@ -1885,27 +1904,27 @@ return {
 
     ctx.effect(() => ctx.on('subagent/end', (info) => {
       try {
-        if (info && info.stopReason) announce('サブエージェントの報告が届いたわよ。', 'soft')
+        if (info && info.stopReason) announce('サブエージェントの報告が届いたわよ。', '子代理的汇报到了。', 'soft')
       } catch (e) { /* ignore */ }
     }))
 
     ctx.effect(() => ctx.on('workflow/end', (info, result) => {
       try {
-        if (result && result.error) announce('ワークフローでエラーが出たわ。確認して。', 'angry')
-        else announce('ワークフロー、全部終わったわよ。', 'happy')
+        if (result && result.error) announce('ワークフローでエラーが出たわ。確認して。', '工作流出错了，去看看吧。', 'angry')
+        else announce('ワークフロー、全部終わったわよ。', '工作流全部跑完了。', 'happy')
       } catch (e) { /* ignore */ }
     }))
 
     ctx.effect(() => ctx.on('agent/error', (payload) => {
       try {
-        if (payload && payload.error) announce('エラーが発生したわ。ログを確認して。', 'angry')
+        if (payload && payload.error) announce('エラーが発生したわ。ログを確認して。', '发生错误了，看看日志吧。', 'angry')
       } catch (e) { /* ignore */ }
     }))
 
     const jobs = ctx.get('jobs')
     if (jobs !== undefined) {
       ctx.effect(() => jobs.onJobDone(() => {
-        announce('バックグラウンドの仕事、終わったわよ。', 'neutral')
+        announce('バックグラウンドの仕事、終わったわよ。', '后台的工作做完了。', 'neutral')
       }))
     }
 
