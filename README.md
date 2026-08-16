@@ -4,6 +4,12 @@
 
 红发翻盖手机里的她：**Live2D 立绘 + 日语语音 + 长期记忆 + 主动来电 + AI 聊天**。
 
+## 🎬 效果预览与演示
+
+![Amadeus 翻盖手机面板](assets/img/amadeus-preview.png)
+
+- 演示视频（B 站）：https://www.bilibili.com/video/BV1CCb16rE3Q/
+
 ## 🚀 一键安装（Windows + PowerShell 5.1+，已装 DSH）
 
 **方式一 · 在线一行命令**（PowerShell 或 CMD 粘贴）：
