@@ -163,13 +163,20 @@ function Install-Plugins {
   Copy-Tree -Src (Join-Path $Src 'package') -Dst $installDir `
     -ExcludeDirs @('node_modules') -ExcludeFiles @()
   # 运行时资源目录（host.mjs 的 ROOT = 安装目录，从这里读面板/资产/工具/人格）
-  foreach ($r in @('plugin', 'assets', 'config', 'persona', 'tools')) {
+  # 只复制运行时需要的内容：plugin/web（面板）、assets、config、persona、tools 的运行时脚本
+  Copy-Tree -Src (Join-Path $Src 'plugin\web') -Dst (Join-Path $installDir 'plugin\web') `
+    -ExcludeDirs @('node_modules', '__pycache__') -ExcludeFiles @('*.pyc')
+  foreach ($r in @('assets', 'config', 'persona')) {
     $rsrc = Join-Path $Src $r
     if (Test-Path $rsrc) {
       Copy-Tree -Src $rsrc -Dst (Join-Path $installDir $r) `
-        -ExcludeDirs @('node_modules', '__pycache__') -ExcludeFiles @('*.pyc')
+        -ExcludeDirs @('node_modules', '__pycache__') `
+        -ExcludeFiles @('*.pyc', 'amadeus-preview.png')
     }
   }
+  Copy-Tree -Src (Join-Path $Src 'tools') -Dst (Join-Path $installDir 'tools') `
+    -ExcludeDirs @('__pycache__') `
+    -ExcludeFiles @('*.pyc', 'build_static.mjs', 'build_client.mjs', 'make_dist.ps1', 'fetch-assets.ps1', 'Download-MultiThread.ps1', 'gen_ring.py')
 
   # 2. 运行数据目录 + 配置文件
   Write-Info '[2/4] 初始化运行数据目录（配置/记忆/临时）…'
