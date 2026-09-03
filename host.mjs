@@ -60,6 +60,9 @@ export function apply(ctx) {
       path: '/amadeus/rpc',
       handler: async (req, res) => {
         noteHost(req)
+        const remoteAddr = req.socket && req.socket.remoteAddress
+        const isLocalHost = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1'
+        if (!isLocalHost) { sendJson(res, 403, { error: 'forbidden' }); return }
         const q = parseQuery(req.url)
         const m = q.m
         const h = typeof m === 'string' ? rpcHandlers.get(m) : undefined
