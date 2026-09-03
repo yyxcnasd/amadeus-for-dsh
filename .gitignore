@@ -22,3 +22,4 @@ tools/qwen-venv/
 # 其它
 .DS_Store
 Thumbs.db
+debug.log

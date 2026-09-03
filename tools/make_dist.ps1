@@ -13,8 +13,14 @@ Push-Location $ROOT
 try {
   node tools\build_static.mjs
   if ($LASTEXITCODE -ne 0) { throw 'build_static.mjs 失败' }
+  # client.js 需要 esbuild；构建失败但已有产物时降级警告（client 源码未变则产物一致）
+  $clientJs = Join-Path $ROOT 'client.js'
   node tools\build_client.mjs
-  if ($LASTEXITCODE -ne 0) { throw 'build_client.mjs 失败' }
+  if ($LASTEXITCODE -ne 0) {
+    if (Test-Path $clientJs) {
+      Write-Warning 'build_client 失败（未找到 esbuild）；client.js 已存在，使用现有产物。若改过 client 源码，请在装有 esbuild 的机器上重打包'
+    } else { throw 'build_client.mjs 失败且缺少 client.js（需要 esbuild）' }
+  }
 } finally { Pop-Location }
 
 Write-Host '==> [1/3] 暂存文件（仅运行时与安装器内容）' -ForegroundColor Cyan
@@ -23,7 +29,6 @@ New-Item -ItemType Directory -Force -Path $STAGE | Out-Null
 
 $ExcludeDirs = @(
   'tmp', 'memory', '.git', 'node_modules', 'research', 'docs',
-  'package\node_modules',
   'tools\voicevox', 'tools\aqua', 'tools\kokoro-venv', 'tools\qwen-venv', 'tools\__pycache__'
 )
 $ExcludeFull = $ExcludeDirs | ForEach-Object { Join-Path $ROOT $_ }
@@ -33,7 +38,7 @@ $ExcludeFiles = @('*.pyc', '*.zip', '*.tgz', '.gitignore',
 robocopy $ROOT $STAGE /E /XD $ExcludeFull /XF $ExcludeFiles /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy 失败（$LASTEXITCODE）" }
 
-$ver = (Get-Content -Raw -Encoding UTF8 (Join-Path $ROOT 'package\package.json') | ConvertFrom-Json).version
+$ver = (Get-Content -Raw -Encoding UTF8 (Join-Path $ROOT 'package.json') | ConvertFrom-Json).version
 [System.IO.File]::WriteAllText((Join-Path $STAGE 'VERSION'), $ver, (New-Object System.Text.UTF8Encoding $false))
 Write-Host "版本：$ver"
 

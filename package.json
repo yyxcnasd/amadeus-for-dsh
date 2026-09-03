@@ -1,0 +1,52 @@
+{
+  "name": "amadeus-for-dsh",
+  "version": "2.2.0",
+  "description": "Steins;Gate 0 Amadeus (Makise Kurisu) 助手：Live2D 翻盖手机 + 日语语音 + 长期记忆，DeepSeek Harness 插件",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./host.mjs",
+    "./index.js": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "host.mjs",
+    "client.js",
+    "client.mjs",
+    "index.js",
+    "cordis.patch.yml",
+    "assets",
+    "config/amadeus.json",
+    "config/manifest.json",
+    "persona",
+    "plugin/web",
+    "tools/tts_emote.py",
+    "tools/stt.py",
+    "tools/llm_chat.py",
+    "tools/mem_save.py",
+    "tools/tts_server.py",
+    "tools/Amadeus-OneClick.ps1",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "live2d",
+    "amadeus",
+    "steins-gate",
+    "tts"
+  ],
+  "license": "MIT"
+}

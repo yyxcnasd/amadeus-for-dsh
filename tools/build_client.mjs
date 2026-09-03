@@ -20,16 +20,16 @@ const req = createRequire(mainPath)
 const esbuild = req('esbuild')
 
 await esbuild.build({
-  entryPoints: [join(ROOT, 'package/client.mjs')],
+  entryPoints: [join(ROOT, 'client.mjs')],
   bundle: true,
   format: 'cjs',
   platform: 'browser',
   external: ['react'],
-  outfile: join(ROOT, 'package/client.js'),
+  outfile: join(ROOT, 'client.js'),
   banner: {
     js: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => { var module = { exports: {} }; var exports = module.exports;`,
   },
   footer: { js: 'return module.exports; } });' },
   logLevel: 'warning',
 })
-console.log('build_client ok -> package/client.js')
+console.log('build_client ok -> client.js（仓库根）')

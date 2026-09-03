@@ -1,0 +1,6 @@
+# Amadeus（牧濑红莉栖）bundle 层。
+# dsh plugin add 安装本包后会自动把它加入该 profile 的 dsh.profile.bundles，
+# 本补丁层向组合树插入 amadeus 加载行（由 dsh 加载器按 name 解析包）。
+- insert:
+    - id: amadeus
+      name: amadeus-for-dsh

@@ -1,11 +1,12 @@
-// 从动态插件源生成可静态挂载的 ESM 插件包（package/host.mjs + package/client.mjs）
+// 从动态插件源生成可静态挂载的 ESM 插件包（仓库根 host.mjs + client.mjs）
+// 说明：仓库根即 npm 包（dsh plugin add github:… / link: 直接以根为包安装），
+//       因此构建产物直接写到仓库根，与 assets/config/persona/plugin/web/tools 平级。
 // 用法: node tools/build_static.mjs
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const OUT = join(ROOT, 'package')
 
 const HOST_SHIM = `    // ---------------- 静态版 RPC 桥（harness → /amadeus/rpc） ----------------
     const rpcHandlers = new Map()
@@ -124,7 +125,6 @@ export function apply(ctx) {`)
   return s
 }
 
-mkdirSync(OUT, { recursive: true })
-writeFileSync(join(OUT, 'host.mjs'), transformHost(), 'utf8')
-writeFileSync(join(OUT, 'client.mjs'), transformClient(), 'utf8')
-console.log('build_static ok -> package/host.mjs, package/client.mjs')
+writeFileSync(join(ROOT, 'host.mjs'), transformHost(), 'utf8')
+writeFileSync(join(ROOT, 'client.mjs'), transformClient(), 'utf8')
+console.log('build_static ok -> host.mjs, client.mjs（仓库根）')

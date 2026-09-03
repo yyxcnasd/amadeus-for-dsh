@@ -352,11 +352,9 @@ export function apply(ctx) {
 
     async function writeTextSafe(absPath, content) {
       const t = await fs.resolve(absPath)
-      let policy
-      try {
-        policy = sandboxPolicy !== undefined ? sandboxPolicy.resolve({ mode: 'danger-full-access' }) : undefined
-      } catch (e) { /* backend 默认 */ }
-      return fs.writeText(t, content, undefined, undefined, policy)
+      // dsh ≥ 0.1.1：writeText(target, content, expected, signal) 不再收 policy 参数，
+      // 沙箱策略由挂载的 fs 后端按调用上下文裁决（应用级 bundle 上下文不受会话沙箱约束）
+      return fs.writeText(t, content)
     }
 
     // 数据目录（config/memory/tmp）不存在时用系统命令补建（fs 服务无 mkdir）
@@ -1715,18 +1713,10 @@ export function apply(ctx) {
           const probePath = TMP_DIR + '/diag-probe.json'
           const probe = await fs.resolve(probePath)
           try {
-            const oc = await fs.writeText(probe, '{"ok":true}', undefined, undefined, undefined)
+            const oc = await fs.writeText(probe, '{"ok":true}')
             out.probeNoPolicy = oc
           } catch (e) {
             out.probeNoPolicyErr = e && e.message ? e.message : String(e)
-          }
-          try {
-            let dp
-            try { dp = sandboxPolicy !== undefined ? sandboxPolicy.resolve({ mode: 'danger-full-access' }) : undefined } catch (e) { /* ignore */ }
-            const oc2 = await fs.writeText(probe, '{"ok":true}', undefined, undefined, dp)
-            out.probeDanger = oc2
-          } catch (e) {
-            out.probeDangerErr = e && e.message ? e.message : String(e)
           }
           out.ok = true
         } catch (e) {
@@ -1931,16 +1921,15 @@ export function apply(ctx) {
       } catch (e) { /* ignore */ }
     }))
 
-    ctx.effect(() => ctx.on('agent/error', (payload) => {
-      try {
-        if (payload && payload.error) announce('エラーが発生したわ。ログを確認して。', '发生错误了，看看日志吧。', 'angry')
-      } catch (e) { /* ignore */ }
-    }))
+    // dsh ≥ 0.1.1 已移除 agent/error 事件（新版仅有 agent/request|created|disposed）；
+    // 工作失败播报改由下方 jobs.onJobDone(status === 'failed') 承担。
 
     const jobs = ctx.get('jobs')
     if (jobs !== undefined) {
-      ctx.effect(() => jobs.onJobDone(() => {
-        announce('バックグラウンドの仕事、終わったわよ。', '后台的工作做完了。', 'neutral')
+      ctx.effect(() => jobs.onJobDone((snapshot) => {
+        const failed = snapshot && snapshot.status === 'failed'
+        if (failed) announce('エラーが発生したわ。ログを確認して。', '后台工作出错了，看看日志吧。', 'angry')
+        else announce('バックグラウンドの仕事、終わったわよ。', '后台的工作做完了。', 'neutral')
       }))
     }
 

@@ -1,6 +1,7 @@
 # plugin/ — Amadeus 插件源码
 
-本目录是插件的**可移植源码**，构建流程：`node tools/build_static.mjs` 将两半源码生成静态包 `package/`（安装器安装的就是它）。
+本目录是插件的**可移植源码**，构建流程：`node tools/build_static.mjs` 生成仓库根
+`host.mjs` / `client.mjs`（**仓库根即 npm 包**，`dsh plugin add` 直接安装）。
 
 | 文件 | 说明 |
 | --- | --- |
@@ -8,10 +9,13 @@
 | `src/client.js` | 客户端半：浮动面板、设置页、状态轮询、主题 |
 | `web/` | 翻盖手机面板（panel.html/css/js）+ Live2D vendor 库 + emotion 映射 |
 
-## 运行方式
+## 安装方式
 
-- **静态安装**（正式）：`install.ps1` 安装 `package/` 静态包，ROOT 由 `import.meta.url` 自动定位，无需改任何路径。
-- **动态调试**（会话内热更新）：把 `src/host.js` / `src/client.js` 内容经 `cordis_define` 加载，或用环境变量 `AMADEUS_ROOT=<项目根>` 覆盖资源目录。
+- **标准安装**（与他人一致）：`dsh plugin --profile <desktop|web> add github:yyxcnasd/amadeus-for-dsh`
+- **本地开发**：改完 `src/*` 后运行 `node tools/build_static.mjs`，再
+  `dsh plugin --profile desktop add link:<本仓库根>`（dsh 会自动重建依赖并加入 bundles）。
+- **动态调试**（会话内热更新）：把 `src/host.js` / `src/client.js` 内容经 `cordis_define` 加载，
+  或用环境变量 `AMADEUS_ROOT=<项目根>` 覆盖资源目录。
 
 ## 依赖
 
