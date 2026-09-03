@@ -325,9 +325,14 @@ return {
 
     async function writeTextSafe(absPath, content) {
       const t = await fs.resolve(absPath)
-      // dsh ≥ 0.1.1：writeText(target, content, expected, signal) 不再收 policy 参数，
-      // 沙箱策略由挂载的 fs 后端按调用上下文裁决（应用级 bundle 上下文不受会话沙箱约束）
-      return fs.writeText(t, content)
+      // dsh ≥ 0.1.1：writeText(target, content, expected, signal, sandboxPolicy)
+      // fs-sandbox 后端第 5 参接收 per-call 策略；缺省按 workspace-write 拦截 ~/.dsh 外的写入
+      // （8/20 后记忆/配置冻结的根因），因此必须显式解析 danger-full-access 提权。
+      let policy
+      try {
+        policy = sandboxPolicy !== undefined ? sandboxPolicy.resolve({ mode: 'danger-full-access' }) : undefined
+      } catch (e) { /* backend 默认 */ }
+      return fs.writeText(t, content, undefined, undefined, policy)
     }
 
     // 数据目录（config/memory/tmp）不存在时用系统命令补建（fs 服务无 mkdir）
@@ -1691,6 +1696,14 @@ return {
           } catch (e) {
             out.probeNoPolicyErr = e && e.message ? e.message : String(e)
           }
+          try {
+            let dp
+            try { dp = sandboxPolicy !== undefined ? sandboxPolicy.resolve({ mode: 'danger-full-access' }) : undefined } catch (e) { /* ignore */ }
+            const oc2 = await fs.writeText(probe, '{"ok":true}', undefined, undefined, dp)
+            out.probeDanger = oc2
+          } catch (e) {
+            out.probeDangerErr = e && e.message ? e.message : String(e)
+          }
           out.ok = true
         } catch (e) {
           out.error = e && e.message ? e.message : String(e)
@@ -1837,12 +1850,49 @@ return {
 
     // ---------------- 助手消息 → 语音 ----------------
     // 需求：助手输出的文本一律不朗读（无论干活 / 对话）；任务完成时统一报告「目標、達成」。
+    // 宽容提取会话消息文本（兼容 data.message / data.content / data.text，字符串或内容数组）
+    function extractMessageText(data) {
+      try {
+        if (data === null || typeof data !== 'object') return ''
+        const msg = data.message && typeof data.message === 'object' ? data.message : data
+        const parts = []
+        if (typeof msg === 'string') {
+          parts.push(msg)
+        } else if (msg && typeof msg === 'object') {
+          const content = msg.content
+          if (typeof content === 'string') {
+            parts.push(content)
+          } else if (Array.isArray(content)) {
+            for (const it of content) {
+              if (!it || typeof it !== 'object') continue
+              if (it.type === 'text' && typeof it.text === 'string') parts.push(it.text)
+              else if (typeof it.text === 'string' && !it.type && parts.length < 8) parts.push(it.text)
+            }
+          } else if (typeof msg.text === 'string') {
+            parts.push(msg.text)
+          }
+        }
+        let text = parts.map((s) => s.trim()).filter((s) => s.length > 0).join('\n')
+        if (text.length > 4000) text = text.slice(0, 4000)
+        return text
+      } catch (e) {
+        return ''
+      }
+    }
+
     ctx.effect(() => ctx.on('session/event', (session, event) => {
       try {
         if (event === null || typeof event !== 'object') return
         if (event.type === 'user/message') {
-          // 新一轮对话开始：解锁完成播报
+          // 新一轮对话开始：解锁完成播报；并记录用户发言（主对话也进长期记忆）
           completionAnnounced = false
+          const text = extractMessageText(event.data)
+          if (text) {
+            memory.history.push({ role: 'user', content: text, t: Date.now() })
+            lastInteractionAt = Date.now()
+            if (memory.history.length > 60) maybeCompactHistory()
+            scheduleSaveMemory()
+          }
           return
         }
         if (event.type === 'turn/start') {
@@ -1868,6 +1918,13 @@ return {
           const msg = event.data && event.data.message
           if (msg && typeof msg === 'object' && isTaskCompleteMessage(msg)) {
             notifyComplete()
+          }
+          // 记录助手最终回复文本（主对话也进长期记忆）
+          const text = extractMessageText(event.data)
+          if (text) {
+            memory.history.push({ role: 'assistant', cn: text, jp: '', t: Date.now() })
+            if (memory.history.length > 60) maybeCompactHistory()
+            scheduleSaveMemory()
           }
           return
         }
