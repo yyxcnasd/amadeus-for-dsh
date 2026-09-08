@@ -47,6 +47,44 @@ v2.0 的 `install.ps1` 会把插件复制到 `profiles\node_modules\amadeus-for-
 - 本地发行包（zip）→ 解压 → 双击 `Amadeus-OneClick.bat` 或运行 `.\install.ps1 [-Profile desktop|web] [-Channel edge|quest]`
 
 > pnpm 依赖：`dsh plugin` 需要 pnpm 在 PATH（DSH Desktop 自带；普通安装 `npm i -g pnpm` 或 `corepack enable`）。
+
+## 🐧 Linux
+
+插件本体是跨平台的（Node / 浏览器 / Python 均按平台解析可执行文件），
+**PowerShell / .bat / install.ps1 等辅助工具仅面向 Windows**，Linux 下直接用 `dsh plugin add` 即可。
+
+1. **安装插件**（DSH Web 模式）：
+   ```bash
+   dsh plugin --profile web add github:yyxcnasd/amadeus-for-dsh
+   dsh web   # 重启 / 启动后右侧栏出现翻盖手机面板
+   ```
+
+2. **准备 curl**（TTS 备用通道需要）：
+   ```bash
+   # Arch: sudo pacman -S curl    Debian/Ubuntu: sudo apt install curl    Fedora: sudo dnf install curl
+   ```
+
+3. **准备 Python 与 edge-tts**（主 TTS 通道）。推荐使用 venv，避免污染系统 Python：
+   ```bash
+   python -m venv ~/.local/share/amadeus/venv
+   ~/.local/share/amadeus/venv/bin/python -m pip install edge-tts
+   export AMADEUS_PYTHON="$HOME/.local/share/amadeus/venv/bin/python"   # 可选：显式指定解释器
+   ```
+   插件解析 Python 的顺序：`AMADEUS_PYTHON` 环境变量 → `python` → `python3`（非 Windows）。
+   若不想用 venv，也可以直接 `pip install --user edge-tts`。
+
+4. **数据目录**：默认 `~/.dsh/amadeus`（`DSH_HOME` 优先于家目录），不会随启动目录漂移。
+   配置 / 长期记忆 / 临时音频都在这里，重装不丢。
+
+5. **可选环境变量**：
+   | 变量 | 作用 |
+   | --- | --- |
+   | `DSH_HOME` | 覆盖 DSH 与 Amadeus 数据根目录（默认 `~/.dsh`） |
+   | `AMADEUS_ROOT` | 覆盖插件资源根（一般只在开发时用） |
+   | `AMADEUS_PYTHON` | 指定 Python 解释器路径（venv 等） |
+
+6. **其他说明**：curl / python 名称按平台自动选择（Windows `curl.exe` / POSIX `curl`）；
+   浏览器端行为与平台无关（Firefox / Chrome 均可）。
 >
 > Edge TTS 通道需要 Python 3.9+（脚本自动 `pip install edge-tts`，失败可改用 VOICEVOX 公共 API 通道，无需 Python）。
 
@@ -100,8 +138,11 @@ docs/ research/                        # 设计文档、调研笔记
 
 ## 兼容性
 
-- DSH（@deepseek-ai/dsh）0.1.1-rc.2 / DSH Desktop 2.0.x：已按新版 API 适配
+- DSH（@deepseek-ai/dsh）0.1.x / DSH Desktop 2.0.x：已按新版 API 适配
   （`fs.writeText` 签名、`agent/error` 事件移除等），web 与 desktop profile 均可安装。
+- 平台：Windows / Linux / macOS 均支持。可执行文件（curl / python）按平台解析，
+  Python 可用 `AMADEUS_PYTHON` 指定（venv）；数据目录默认 `~/.dsh/amadeus`。
+  PowerShell / .bat 辅助工具仅面向 Windows，Linux 直接用 `dsh plugin add`（见上方 🐧 Linux）。
 - 旧版 DSH（2.0 时代）不再支持新安装方式时，请使用对应版本的发行包。
 
 ## 版权

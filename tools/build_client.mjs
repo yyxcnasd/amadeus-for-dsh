@@ -8,16 +8,26 @@ import { createRequire } from 'node:module'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const ID = 'amadeus-for-dsh'
 
-const candidates = [
-  'D:/apps/deepseek-harness/node_modules/.pnpm/esbuild@0.25.12/node_modules/esbuild/lib/main.js',
-  'D:/apps/deepseek-harness/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js',
-  'D:/apps/deepseek-harness/node_modules/.pnpm/esbuild@0.28.1/node_modules/esbuild/lib/main.js',
-]
-let mainPath = candidates.find((p) => existsSync(p))
-if (mainPath === undefined) throw new Error('未找到 esbuild lib/main.js')
-
-const req = createRequire(mainPath)
-const esbuild = req('esbuild')
+// 优先使用仓库本地 esbuild（devDependencies，标准 module resolution，跨平台）；
+// 找不到时回退到历史 DSH checkout 的 esbuild（旧开发机兼容）。
+let esbuild
+try {
+  const mod = await import('esbuild')
+  esbuild = mod && typeof mod.build === 'function' ? mod : undefined
+} catch (e) {
+  esbuild = undefined
+}
+if (esbuild === undefined) {
+  const candidates = [
+    'D:/apps/deepseek-harness/node_modules/.pnpm/esbuild@0.25.12/node_modules/esbuild/lib/main.js',
+    'D:/apps/deepseek-harness/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js',
+    'D:/apps/deepseek-harness/node_modules/.pnpm/esbuild@0.28.1/node_modules/esbuild/lib/main.js',
+  ]
+  const mainPath = candidates.find((p) => existsSync(p))
+  if (mainPath === undefined) throw new Error('未找到 esbuild：请在仓库运行 npm i -D esbuild 后重试')
+  const req = createRequire(mainPath)
+  esbuild = req('esbuild')
+}
 
 await esbuild.build({
   entryPoints: [join(ROOT, 'client.mjs')],

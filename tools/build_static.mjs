@@ -21,6 +21,10 @@ const HOST_SHIM = `    // ---------------- 静态版 RPC 桥（harness → /amad
       path: '/amadeus/rpc',
       handler: async (req, res) => {
         noteHost(req)
+        // V-002（社区 PR #1）：RPC 仅允许本机回环访问，避免网络侧任意调用
+        const remoteAddr = req.socket && req.socket.remoteAddress
+        const isLocalHost = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1'
+        if (!isLocalHost) { sendJson(res, 403, { error: 'forbidden' }); return }
         const q = parseQuery(req.url)
         const m = q.m
         const h = typeof m === 'string' ? rpcHandlers.get(m) : undefined
@@ -43,7 +47,13 @@ const STATIC_PATHS = `    // 静态版路径（由 tools/build_static.mjs 生成
     const ROOT = (typeof process !== 'undefined' && process.env && process.env.AMADEUS_ROOT && process.env.AMADEUS_ROOT.length > 0) ? process.env.AMADEUS_ROOT : MODULE_DIR
     const DATA_DIR = (() => {
       const env = (typeof process !== 'undefined' && process.env) ? process.env : {}
-      const dshHome = env.DSH_HOME || (env.USERPROFILE ? env.USERPROFILE + '\\\\.dsh' : '')
+      // DSH_HOME 优先；其次按平台取家目录（Windows: USERPROFILE，POSIX: HOME），
+      // 避免 Linux 下退化为「当前工作目录/amadeus」导致数据随启动目录漂移。
+      let dshHome = env.DSH_HOME || ''
+      if (!dshHome) {
+        const home = env.USERPROFILE || env.HOME || ''
+        if (home) dshHome = home + '/.dsh'
+      }
       return (dshHome || (typeof process !== 'undefined' && process.cwd ? process.cwd() : '.')) + '/amadeus'
     })()
     const CONFIG_PATH = DATA_DIR + '/config/amadeus.json'

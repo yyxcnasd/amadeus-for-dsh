@@ -1,6 +1,6 @@
 {
   "name": "amadeus-for-dsh",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Steins;Gate 0 Amadeus (Makise Kurisu) 助手：Live2D 翻盖手机 + 日语语音 + 长期记忆，DeepSeek Harness 插件",
   "type": "module",
   "main": "index.js",
@@ -48,5 +48,8 @@
     "steins-gate",
     "tts"
   ],
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  },
   "license": "MIT"
 }

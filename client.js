@@ -27,7 +27,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// package/client.mjs
+// client.mjs
 var client_exports = {};
 __export(client_exports, {
   apply: () => apply,

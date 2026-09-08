@@ -32,7 +32,13 @@ return {
     })()
     const DATA_DIR = (() => {
       const env = (typeof process !== 'undefined' && process.env) ? process.env : {}
-      const dshHome = env.DSH_HOME || (env.USERPROFILE ? env.USERPROFILE + '\\.dsh' : '')
+      // DSH_HOME 优先；其次按平台取家目录（Windows: USERPROFILE，POSIX: HOME），
+      // 避免 Linux 下退化为「当前工作目录/amadeus」导致数据随启动目录漂移。
+      let dshHome = env.DSH_HOME || ''
+      if (!dshHome) {
+        const home = env.USERPROFILE || env.HOME || ''
+        if (home) dshHome = home + '/.dsh'
+      }
       return (dshHome || (typeof process !== 'undefined' && process.cwd ? process.cwd() : '.')) + '/amadeus'
     })()
     const CONFIG_PATH = DATA_DIR + '/config/amadeus.json'
@@ -480,6 +486,32 @@ return {
           if (!Array.isArray(memory.facts)) memory.facts = []
           if (!Array.isArray(memory.history)) memory.history = []
           if (typeof memory.summary !== 'string') memory.summary = ''
+          // v2.2.1 误把主对话写进记忆导致面板聊天污染：一次性自动清理（重启后执行一次）。
+          // 规则：删除 jp 为空且 cn 非空的 assistant 条目（主对话助手消息），以及其后 30 分钟内
+          // 存在此类条目的 user 条目（主对话用户消息）；announce / 面板聊天 / 来电条目不受影响。
+          if (memory.mainChatPurged !== true) {
+            const pollutedT = new Set()
+            for (const m of memory.history) {
+              if (m && m.role === 'assistant' && !m.jp && typeof m.cn === 'string' && m.cn.length > 0 && m.announce !== true) {
+                pollutedT.add(m.t)
+              }
+            }
+            if (pollutedT.size > 0) {
+              const cutoff = 30 * 60 * 1000
+              memory.history = memory.history.filter((m) => {
+                if (!m || typeof m !== 'object') return false
+                if (m.role === 'assistant' && !m.jp && typeof m.cn === 'string' && m.cn.length > 0 && m.announce !== true) return false
+                if (m.role === 'user' && typeof m.t === 'number') {
+                  for (const pt of pollutedT) {
+                    if (pt > m.t && pt - m.t <= cutoff) return false
+                  }
+                }
+                return true
+              })
+            }
+            memory.mainChatPurged = true
+            scheduleSaveMemory()
+          }
         }
       } catch (e) {
         console.error('[amadeus] 读取记忆失败:', e && e.message ? e.message : String(e))
@@ -524,14 +556,37 @@ return {
       if (res.o.exitCode !== 0) throw new Error(label + ' exited ' + res.o.exitCode)
     }
 
-    async function runPython(args, label) {
-      let exe
-      try {
-        exe = await subprocess.resolveExecutable('python')
-      } catch (e) {
-        exe = undefined
+    // ---------------- 可执行文件解析（跨平台） ----------------
+    // Linux/macOS 的可执行文件名称与 Windows 不同（curl vs curl.exe 等），
+    // 并且 Python 环境可能通过 venv / 发行版差异使用不同路径，因此统一用候选列表解析。
+    async function resolveExe(candidates) {
+      for (const name of candidates) {
+        try {
+          const exe = await subprocess.resolveExecutable(name)
+          if (typeof exe === 'string' && exe.length > 0) return exe
+        } catch (e) { /* try next */ }
       }
-      if (typeof exe !== 'string' || exe.length === 0) throw new Error('python not found')
+      return undefined
+    }
+
+    // Python：AMADEUS_PYTHON 环境变量 > python > python3（非 Windows）
+    async function resolvePython() {
+      const envPy = (typeof process !== 'undefined' && process.env && process.env.AMADEUS_PYTHON)
+        ? String(process.env.AMADEUS_PYTHON).trim()
+        : ''
+      const candidates = []
+      if (envPy) candidates.push(envPy)
+      candidates.push('python')
+      if (typeof process === 'undefined' || process.platform !== 'win32') candidates.push('python3')
+      const exe = await resolveExe(candidates)
+      if (typeof exe !== 'string' || exe.length === 0) {
+        throw new Error('python/python3 not found（可用环境变量 AMADEUS_PYTHON 指定解释器）')
+      }
+      return exe
+    }
+
+    async function runPython(args, label) {
+      const exe = await resolvePython()
       const proc = subprocess.spawn({
         argv: [exe].concat(args),
         cwd: ROOT,
@@ -542,13 +597,9 @@ return {
     }
 
     async function runCurl(args) {
-      let exe
-      try {
-        exe = await subprocess.resolveExecutable('curl.exe')
-      } catch (e) {
-        exe = undefined
-      }
-      if (typeof exe !== 'string' || exe.length === 0) throw new Error('curl.exe not found')
+      const curlName = (typeof process !== 'undefined' && process.platform === 'win32') ? 'curl.exe' : 'curl'
+      const exe = await resolveExe([curlName])
+      if (typeof exe !== 'string' || exe.length === 0) throw new Error(curlName + ' not found（请安装 curl）')
       const proc = subprocess.spawn({
         argv: [exe].concat(args),
         cwd: ROOT,
@@ -588,7 +639,7 @@ return {
       if (config.provider !== 'edge' && config.provider !== 'auto') return null
       let proc
       try {
-        const py = await subprocess.resolveExecutable('python')
+        const py = await resolvePython()
         proc = subprocess.spawn({
           // cwd 用数据目录而非安装目录：Windows 上常驻进程的 cwd 会锁住安装目录，
           // 导致下次重装时 Remove-Item 失败。worker 全部使用绝对路径，不依赖 cwd。
@@ -1850,49 +1901,12 @@ return {
 
     // ---------------- 助手消息 → 语音 ----------------
     // 需求：助手输出的文本一律不朗读（无论干活 / 对话）；任务完成时统一报告「目標、達成」。
-    // 宽容提取会话消息文本（兼容 data.message / data.content / data.text，字符串或内容数组）
-    function extractMessageText(data) {
-      try {
-        if (data === null || typeof data !== 'object') return ''
-        const msg = data.message && typeof data.message === 'object' ? data.message : data
-        const parts = []
-        if (typeof msg === 'string') {
-          parts.push(msg)
-        } else if (msg && typeof msg === 'object') {
-          const content = msg.content
-          if (typeof content === 'string') {
-            parts.push(content)
-          } else if (Array.isArray(content)) {
-            for (const it of content) {
-              if (!it || typeof it !== 'object') continue
-              if (it.type === 'text' && typeof it.text === 'string') parts.push(it.text)
-              else if (typeof it.text === 'string' && !it.type && parts.length < 8) parts.push(it.text)
-            }
-          } else if (typeof msg.text === 'string') {
-            parts.push(msg.text)
-          }
-        }
-        let text = parts.map((s) => s.trim()).filter((s) => s.length > 0).join('\n')
-        if (text.length > 4000) text = text.slice(0, 4000)
-        return text
-      } catch (e) {
-        return ''
-      }
-    }
-
     ctx.effect(() => ctx.on('session/event', (session, event) => {
       try {
         if (event === null || typeof event !== 'object') return
         if (event.type === 'user/message') {
-          // 新一轮对话开始：解锁完成播报；并记录用户发言（主对话也进长期记忆）
+          // 新一轮对话开始：解锁完成播报（主对话内容不写入记忆——v2.2.1 误加记录曾污染面板聊天，已撤回）
           completionAnnounced = false
-          const text = extractMessageText(event.data)
-          if (text) {
-            memory.history.push({ role: 'user', content: text, t: Date.now() })
-            lastInteractionAt = Date.now()
-            if (memory.history.length > 60) maybeCompactHistory()
-            scheduleSaveMemory()
-          }
           return
         }
         if (event.type === 'turn/start') {
@@ -1919,13 +1933,8 @@ return {
           if (msg && typeof msg === 'object' && isTaskCompleteMessage(msg)) {
             notifyComplete()
           }
-          // 记录助手最终回复文本（主对话也进长期记忆）
-          const text = extractMessageText(event.data)
-          if (text) {
-            memory.history.push({ role: 'assistant', cn: text, jp: '', t: Date.now() })
-            if (memory.history.length > 60) maybeCompactHistory()
-            scheduleSaveMemory()
-          }
+          // 注意：不把主会话内容写入记忆（v2.2.1 误加过，污染了面板聊天，已撤回）；
+          // 记忆只记录 Amadeus 面板聊天与播报。主对话内容仅供事实抽取时可另行设计。
           return
         }
         // assistant/chunk 等其它事件：不朗读任何助手文本
