@@ -61,6 +61,13 @@ export function apply(ctx) {
         return () => { rpcHandlers.delete(name) }
       },
     }
+    // V-001：仅校验来源 IP 不足以证明调用方授权，任何本机进程都能发起请求；
+    // 追加共享密钥校验（AMADEUS_RPC_TOKEN，未配置时启动期随机生成并要求持有方提供）
+    const RPC_TOKEN = (typeof process !== 'undefined' && process.env && process.env.AMADEUS_RPC_TOKEN) || (() => {
+      const bytes = new Uint8Array(24)
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) { crypto.getRandomValues(bytes) } else { for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256) }
+      return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')
+    })()
     ctx.effect(() => webServer.register({
       kind: 'exact',
       path: '/amadeus/rpc',
@@ -70,6 +77,8 @@ export function apply(ctx) {
         const remoteAddr = req.socket && req.socket.remoteAddress
         const isLocalHost = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1'
         if (!isLocalHost) { sendJson(res, 403, { error: 'forbidden' }); return }
+        const reqToken = req.headers && (req.headers['x-amadeus-token'] || req.headers['X-Amadeus-Token'])
+        if (reqToken !== RPC_TOKEN) { sendJson(res, 403, { error: 'forbidden' }); return }
         const q = parseQuery(req.url)
         const m = q.m
         const h = typeof m === 'string' ? rpcHandlers.get(m) : undefined
@@ -407,7 +416,9 @@ export function apply(ctx) {
         const text = await fs.readText(t)
         const parsed = JSON.parse(text)
         if (parsed && typeof parsed === 'object') {
-          config = Object.assign({}, DEFAULT_CONFIG, parsed)
+          const merged = Object.assign({}, DEFAULT_CONFIG)
+          for (const k of Object.keys(DEFAULT_CONFIG)) { if (Object.prototype.hasOwnProperty.call(parsed, k)) merged[k] = parsed[k] }
+          config = merged
         }
       } catch (e) {
         console.error('[amadeus] 读取配置失败:', e && e.message ? e.message : String(e))
@@ -513,7 +524,9 @@ export function apply(ctx) {
         if (info === undefined) return
         const parsed = JSON.parse(await fs.readText(t))
         if (parsed && typeof parsed === 'object') {
-          memory = Object.assign({ facts: [], history: [], summary: '', lastCallAt: 0, callCount: 0 }, parsed)
+          const memBase = { facts: [], history: [], summary: '', lastCallAt: 0, callCount: 0 }
+          memory = Object.assign({}, memBase)
+          for (const k of Object.keys(memBase)) { if (Object.prototype.hasOwnProperty.call(parsed, k)) memory[k] = parsed[k] }
           if (!Array.isArray(memory.facts)) memory.facts = []
           if (!Array.isArray(memory.history)) memory.history = []
           if (typeof memory.summary !== 'string') memory.summary = ''
