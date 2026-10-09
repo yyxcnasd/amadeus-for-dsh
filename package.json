@@ -1,7 +1,7 @@
-﻿{
+{
   "name": "amadeus-for-dsh",
-  "version": "2.4.1",
-  "description": "Steins;Gate 0 Amadeus (Makise Kurisu) 鍔╂墜锛歀ive2D 缈荤洊鎵嬫満 + 鏃ヨ璇煶 + 闀挎湡璁板繂锛孌eepSeek Harness 鎻掍欢",
+  "version": "2.4.2",
+  "description": "Steins;Gate 0 Amadeus (Makise Kurisu) 助手：Live2D 翻盖手机 + 日语语音 + 长期记忆，DeepSeek Harness 插件",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -39,8 +39,7 @@
       "inject": [
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-theme",
-        "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-sidebar-right"
+        "@deepseek-ai/dsh-client-ui-layout"
       ]
     }
   },

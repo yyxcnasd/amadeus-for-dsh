@@ -13,7 +13,8 @@ return {
 
     // ---------------- 样式 ----------------
     const removeCss = styles.insert(
-      ".amad-col{display:flex;flex-direction:column;height:100%;min-height:440px;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);}" +
+      ".amad-col{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--dsw-alias-bg-base,transparent);}" +
+      ".amad-dock{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:46vw;z-index:60;pointer-events:auto;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);box-shadow:-8px 0 24px rgba(0,0,0,.28);}" +
       ".amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}" +
       ".amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}" +
       ".amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}" +
@@ -28,8 +29,11 @@ return {
       ".amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}" +
       ".amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}" +
       ".amad-settings-btn:hover{background:rgba(128,128,128,.15);}" +
-      ".amad-sb-btn{border:0;background:transparent;color:inherit;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;gap:6px;}" +
-      ".amad-sb-btn:hover{background:rgba(128,128,128,.15);}" +
+      ".amad-sb-btn{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;flex:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;padding:0;width:28px;height:28px;font-size:13px;}" +
+      ".amad-sb-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}" +
+      ".amad-sb-wide{width:100%;justify-content:flex-start;padding:0 8px;}" +
+      ".amad-sb-icon{font-size:15px;line-height:1;}" +
+      ".amad-frame{flex:1;min-height:0;width:100%;border:0;display:block;background:transparent;}" +
       ".amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
     )
     ctx.effect(() => removeCss)
@@ -135,13 +139,13 @@ return {
           // 来电 → 自动展开右侧栏
           if (res.callPending === true && !lastCallPending) {
             lastCallPending = true
-            openDetailsSafe()
+            openPanel()
           }
           if (res.callPending !== true) lastCallPending = false
           // 面板请求关闭 Amadeus 系统 → 收起右侧栏并确认
           if (typeof res.pendingClose === 'number' && res.pendingClose !== lastPendingClose) {
             lastPendingClose = res.pendingClose
-            try { if (layout) layout.closeDetails() } catch (e) { /* ignore */ }
+            closePanel()
             host.call('ackClose', {}).catch(() => {})
           }
           if (typeof res.pendingClose !== 'number') lastPendingClose = null
@@ -189,42 +193,24 @@ return {
       try { await host.call('clientReport', { msg: String(msg).slice(0, 250) }) } catch (e) { /* ignore */ }
     }
 
-    // 右侧栏：DSH 0.2+ 用 sidebarRight 的 tab；旧版用 layout.openDetails/closeDetails
-    const AMAD_KIND = 'amadeus'
+    // 独立右侧栏：0.2+ 使用自有停靠面板（shell.overlay），不占用内置右侧栏的 tab 体系；
+    // 旧版（≤0.1.x）仍走 layout.openDetails/closeDetails。
+    const panelOpenStore = createStore(true)
 
-    function openPanel(ev) {
+    function openPanel() {
+      panelOpenStore.set(true)
       notifyOpen()
-      try {
-        const sr = ctx.get('sidebarRight')
-        if (sr !== undefined && typeof sr.openTabFromTarget === 'function') {
-          const el = (ev && ev.currentTarget) || (typeof document !== 'undefined' ? document.activeElement : undefined)
-          const target = typeof sr.commandTarget === 'function' ? sr.commandTarget(el) : undefined
-          if (target !== undefined) { sr.openTabFromTarget(AMAD_KIND, target); return }
-        }
-      } catch (e) { /* fall through */ }
-      openDetailsSafe()
+      try { if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails() } catch (e) { /* ignore */ }
     }
 
     function closePanel() {
-      try {
-        if (layout !== undefined && typeof layout.closeRightbar === 'function') { layout.closeRightbar(); return }
-        if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails()
-      } catch (e) { /* ignore */ }
+      panelOpenStore.set(false)
+      try { if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails() } catch (e) { /* ignore */ }
     }
 
     function openDetailsSafe() {
-      // 旧版：直接打开右侧 details 列
-      if (layout !== undefined && typeof layout.openDetails === 'function') {
-        try { layout.openDetails(); return } catch (e) { /* ignore */ }
-      }
-      // 新版：用当前屏幕目标打开 Amadeus tab（有活跃会话时面板即出现）
-      try {
-        const sr = ctx.get('sidebarRight')
-        if (sr !== undefined && typeof sr.openTabFromTarget === 'function' && typeof document !== 'undefined') {
-          const target = typeof sr.commandTarget === 'function' ? sr.commandTarget(document.body) : undefined
-          if (target !== undefined) sr.openTabFromTarget(AMAD_KIND, target)
-        }
-      } catch (e) { /* ignore */ }
+      // 仅旧版：打开右侧 details 列（新版面板由 shell.overlay 常驻渲染）
+      try { if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails() } catch (e) { /* ignore */ }
     }
 
     rpcReport('client apply start')
@@ -283,6 +269,15 @@ return {
       }, [config])
 
       return React.createElement('div', { className: 'amad-col' },
+        React.createElement('div', { className: 'amad-header' },
+          React.createElement('span', {
+            className: 'amad-dot',
+            style: { background: status.error ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-state-success-primary)' },
+          }),
+          React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
+          React.createElement('span', { className: 'amad-sub' }, status.error ? 'host 不可达' : (status.tts || '')),
+          React.createElement('button', { className: 'amad-btn', title: '关闭面板', onClick: closePanel }, '✕'),
+        ),
         React.createElement('iframe', {
           className: 'amad-frame',
           src: panelSrc,
@@ -416,10 +411,13 @@ return {
       return React.createElement('div', null,
         React.createElement(RootPoller),
         React.createElement('button', {
-          className: 'amad-sb-btn',
-          title: '打开 Amadeus 右侧栏',
+          className: 'amad-sb-btn' + (wide ? ' amad-sb-wide' : ''),
+          title: 'Amadeus',
           onClick: openPanel,
-        }, wide ? 'Amadeus' : 'A'),
+        },
+          React.createElement('span', { className: 'amad-sb-icon' }, '📱'),
+          wide ? React.createElement('span', null, 'Amadeus') : null,
+        ),
       )
     }
 
@@ -430,40 +428,19 @@ return {
       () => React.createElement(AmadeusColumn),
     ))
 
-    // 新版（0.2+）：右侧栏 tab 类型 + keyed 面板槽（sidebar.right.pane.tab / .title）
-    // 注意：pane 槽的 key 必须是「tab 类型定义的 id」（官方插件用包名），不是 kind，
-    // 否则打开 tab 时找不到视图，右侧栏会显示“这类内容还没有可用的查看方式”。
-    const AMAD_TAB_ID = 'amadeus-for-dsh'
-    // sidebarRightTabs 若尚未就绪，用 ctx.inject 等服务出现后补注册（避免静默无面板）
-    let rightbarRegistered = false
-    function setupRightbarTab() {
-      if (rightbarRegistered) return
-      const tabs = ctx.get('sidebarRightTabs')
-      if (tabs === undefined || typeof tabs.register !== 'function') return
-      rightbarRegistered = true
-      ctx.effect(() => {
-        const base = { id: AMAD_TAB_ID, kind: AMAD_KIND, multiple: false, priority: 'builtin', title: () => 'Amadeus' }
-        const withGuide = Object.assign({
-          guide: [{ id: 'amadeus', order: 30, title: () => 'Amadeus', description: () => '牧濑红莉栖 · Live2D 翻盖手机' }],
-        }, base)
-        try { return tabs.register(withGuide) } catch (e) { return tabs.register(base) }
-      })
-      ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
-        { name: 'sidebar.right.pane.tab', key: AMAD_TAB_ID },
-        () => React.createElement(AmadeusColumn),
-      )))
-      ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register(
-        { name: 'sidebar.right.pane.tab.title', key: AMAD_TAB_ID },
-        () => React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
-      )))
-      rpcReport('rightbar tab registered')
+    // 独立右侧栏面板（0.2+）：注册到全框浮动层 shell.overlay（list 槽，不遮蔽官方右侧栏）
+    function AmadeusDock() {
+      const open = useStore(panelOpenStore)
+      if (!open) return null
+      return React.createElement('div', { className: 'amad-dock' },
+        React.createElement(AmadeusColumn),
+      )
     }
-    setupRightbarTab()
-    if (!rightbarRegistered) {
-      try {
-        ctx.inject(['sidebarRightTabs', 'sidebarRight'], () => { try { setupRightbarTab() } catch (e) { /* ignore */ } })
-      } catch (e) { /* ignore */ }
-    }
+    slots.inject('shell.overlay', () => slots.register(
+      { name: 'shell.overlay', id: 'amadeus-panel', order: 10 },
+      () => React.createElement(AmadeusDock),
+    ))
+    rpcReport('overlay dock registered')
 
     slots.inject('sidebar.footer.action', () => slots.register(
       { name: 'sidebar.footer.action', id: 'amadeus', order: 50, label: 'Amadeus' },

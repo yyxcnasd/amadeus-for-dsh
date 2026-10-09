@@ -58,7 +58,7 @@ function apply(ctx) {
     };
   }
   const removeCss = domCss(
-    ".amad-col{display:flex;flex-direction:column;height:100%;min-height:440px;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);}.amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}.amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}.amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}.amad-sub{font-size:10px;color:var(--dsw-alias-label-secondary,#9a8f8b);margin-right:auto;}.amad-btn{border:0;background:rgba(255,255,255,.08);color:inherit;width:24px;height:24px;border-radius:6px;font-size:12px;cursor:pointer;line-height:1;padding:0;flex:none;}.amad-btn:hover{background:rgba(255,255,255,.18);}.amad-frame{flex:1;min-height:300px;width:100%;border:0;display:block;background:transparent;}.amad-footer{padding:4px 10px;font-size:10px;color:var(--dsw-alias-label-secondary,#8d8380);border-top:1px solid rgba(255,255,255,.08);flex:none;}.amad-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 4px;border-bottom:1px solid rgba(128,128,128,.18);}.amad-settings-label{font-weight:600;}.amad-settings-desc{font-size:12px;color:#9a8f8b;margin-top:2px;}.amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}.amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}.amad-settings-btn:hover{background:rgba(128,128,128,.15);}.amad-sb-btn{border:0;background:transparent;color:inherit;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;gap:6px;}.amad-sb-btn:hover{background:rgba(128,128,128,.15);}.amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
+    ".amad-col{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--dsw-alias-bg-base,transparent);}.amad-dock{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:46vw;z-index:60;pointer-events:auto;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);box-shadow:-8px 0 24px rgba(0,0,0,.28);}.amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}.amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}.amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}.amad-sub{font-size:10px;color:var(--dsw-alias-label-secondary,#9a8f8b);margin-right:auto;}.amad-btn{border:0;background:rgba(255,255,255,.08);color:inherit;width:24px;height:24px;border-radius:6px;font-size:12px;cursor:pointer;line-height:1;padding:0;flex:none;}.amad-btn:hover{background:rgba(255,255,255,.18);}.amad-frame{flex:1;min-height:300px;width:100%;border:0;display:block;background:transparent;}.amad-footer{padding:4px 10px;font-size:10px;color:var(--dsw-alias-label-secondary,#8d8380);border-top:1px solid rgba(255,255,255,.08);flex:none;}.amad-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 4px;border-bottom:1px solid rgba(128,128,128,.18);}.amad-settings-label{font-weight:600;}.amad-settings-desc{font-size:12px;color:#9a8f8b;margin-top:2px;}.amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}.amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}.amad-settings-btn:hover{background:rgba(128,128,128,.15);}.amad-sb-btn{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;flex:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;padding:0;width:28px;height:28px;font-size:13px;}.amad-sb-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}.amad-sb-wide{width:100%;justify-content:flex-start;padding:0 8px;}.amad-sb-icon{font-size:15px;line-height:1;}.amad-frame{flex:1;min-height:0;width:100%;border:0;display:block;background:transparent;}.amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
   );
   ctx.effect(() => removeCss);
   const theme = ctx.get("theme");
@@ -160,15 +160,12 @@ function apply(ctx) {
         }
         if (res.callPending === true && !lastCallPending) {
           lastCallPending = true;
-          openDetailsSafe();
+          openPanel();
         }
         if (res.callPending !== true) lastCallPending = false;
         if (typeof res.pendingClose === "number" && res.pendingClose !== lastPendingClose) {
           lastPendingClose = res.pendingClose;
-          try {
-            if (layout) layout.closeDetails();
-          } catch (e) {
-          }
+          closePanel();
           hostLocal.call("ackClose", {}).catch(() => {
           });
         }
@@ -234,47 +231,25 @@ function apply(ctx) {
     } catch (e) {
     }
   }
-  const AMAD_KIND = "amadeus";
-  function openPanel(ev) {
+  const panelOpenStore = createStore(true);
+  function openPanel() {
+    panelOpenStore.set(true);
     notifyOpen();
     try {
-      const sr = ctx.get("sidebarRight");
-      if (sr !== void 0 && typeof sr.openTabFromTarget === "function") {
-        const el = ev && ev.currentTarget || (typeof document !== "undefined" ? document.activeElement : void 0);
-        const target = typeof sr.commandTarget === "function" ? sr.commandTarget(el) : void 0;
-        if (target !== void 0) {
-          sr.openTabFromTarget(AMAD_KIND, target);
-          return;
-        }
-      }
+      if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
     } catch (e) {
     }
-    openDetailsSafe();
   }
   function closePanel() {
+    panelOpenStore.set(false);
     try {
-      if (layout !== void 0 && typeof layout.closeRightbar === "function") {
-        layout.closeRightbar();
-        return;
-      }
       if (layout !== void 0 && typeof layout.closeDetails === "function") layout.closeDetails();
     } catch (e) {
     }
   }
   function openDetailsSafe() {
-    if (layout !== void 0 && typeof layout.openDetails === "function") {
-      try {
-        layout.openDetails();
-        return;
-      } catch (e) {
-      }
-    }
     try {
-      const sr = ctx.get("sidebarRight");
-      if (sr !== void 0 && typeof sr.openTabFromTarget === "function" && typeof document !== "undefined") {
-        const target = typeof sr.commandTarget === "function" ? sr.commandTarget(document.body) : void 0;
-        if (target !== void 0) sr.openTabFromTarget(AMAD_KIND, target);
-      }
+      if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
     } catch (e) {
     }
   }
@@ -338,6 +313,17 @@ function apply(ctx) {
     return import_react.default.createElement(
       "div",
       { className: "amad-col" },
+      import_react.default.createElement(
+        "div",
+        { className: "amad-header" },
+        import_react.default.createElement("span", {
+          className: "amad-dot",
+          style: { background: status.error ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-state-success-primary)" }
+        }),
+        import_react.default.createElement("span", { className: "amad-title" }, "Amadeus"),
+        import_react.default.createElement("span", { className: "amad-sub" }, status.error ? "host \u4E0D\u53EF\u8FBE" : status.tts || ""),
+        import_react.default.createElement("button", { className: "amad-btn", title: "\u5173\u95ED\u9762\u677F", onClick: closePanel }, "\u2715")
+      ),
       import_react.default.createElement("iframe", {
         className: "amad-frame",
         src: panelSrc,
@@ -478,57 +464,36 @@ function apply(ctx) {
       "div",
       null,
       import_react.default.createElement(RootPoller),
-      import_react.default.createElement("button", {
-        className: "amad-sb-btn",
-        title: "\u6253\u5F00 Amadeus \u53F3\u4FA7\u680F",
-        onClick: openPanel
-      }, wide ? "Amadeus" : "A")
+      import_react.default.createElement(
+        "button",
+        {
+          className: "amad-sb-btn" + (wide ? " amad-sb-wide" : ""),
+          title: "Amadeus",
+          onClick: openPanel
+        },
+        import_react.default.createElement("span", { className: "amad-sb-icon" }, "\u{1F4F1}"),
+        wide ? import_react.default.createElement("span", null, "Amadeus") : null
+      )
     );
   }
   slots.inject("details", () => slots.register(
     { name: "details", priority: -1 },
     () => import_react.default.createElement(AmadeusColumn)
   ));
-  const AMAD_TAB_ID = "amadeus-for-dsh";
-  let rightbarRegistered = false;
-  function setupRightbarTab() {
-    if (rightbarRegistered) return;
-    const tabs = ctx.get("sidebarRightTabs");
-    if (tabs === void 0 || typeof tabs.register !== "function") return;
-    rightbarRegistered = true;
-    ctx.effect(() => {
-      const base = { id: AMAD_TAB_ID, kind: AMAD_KIND, multiple: false, priority: "builtin", title: () => "Amadeus" };
-      const withGuide = Object.assign({
-        guide: [{ id: "amadeus", order: 30, title: () => "Amadeus", description: () => "\u7267\u6FD1\u7EA2\u8389\u6816 \xB7 Live2D \u7FFB\u76D6\u624B\u673A" }]
-      }, base);
-      try {
-        return tabs.register(withGuide);
-      } catch (e) {
-        return tabs.register(base);
-      }
-    });
-    ctx.effect(() => slots.inject("sidebar.right.pane.tab", () => slots.register(
-      { name: "sidebar.right.pane.tab", key: AMAD_TAB_ID },
-      () => import_react.default.createElement(AmadeusColumn)
-    )));
-    ctx.effect(() => slots.inject("sidebar.right.pane.tab.title", () => slots.register(
-      { name: "sidebar.right.pane.tab.title", key: AMAD_TAB_ID },
-      () => import_react.default.createElement("span", { className: "amad-title" }, "Amadeus")
-    )));
-    rpcReport("rightbar tab registered");
+  function AmadeusDock() {
+    const open = useStore(panelOpenStore);
+    if (!open) return null;
+    return import_react.default.createElement(
+      "div",
+      { className: "amad-dock" },
+      import_react.default.createElement(AmadeusColumn)
+    );
   }
-  setupRightbarTab();
-  if (!rightbarRegistered) {
-    try {
-      ctx.inject(["sidebarRightTabs", "sidebarRight"], () => {
-        try {
-          setupRightbarTab();
-        } catch (e) {
-        }
-      });
-    } catch (e) {
-    }
-  }
+  slots.inject("shell.overlay", () => slots.register(
+    { name: "shell.overlay", id: "amadeus-panel", order: 10 },
+    () => import_react.default.createElement(AmadeusDock)
+  ));
+  rpcReport("overlay dock registered");
   slots.inject("sidebar.footer.action", () => slots.register(
     { name: "sidebar.footer.action", id: "amadeus", order: 50, label: "Amadeus" },
     (props) => import_react.default.createElement(SidebarToggle, props)
