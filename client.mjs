@@ -43,10 +43,11 @@ export function apply(ctx) {
       ".amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}" +
       ".amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}" +
       ".amad-settings-btn:hover{background:rgba(128,128,128,.15);}" +
-      ".amad-sb-btn{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;flex:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;padding:0;width:28px;height:28px;font-size:13px;}" +
+      ".amad-sb-btn{width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:none;border-radius:12px;display:inline-flex;align-items:center;gap:8px;margin:0 -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;overflow:hidden;}" +
       ".amad-sb-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}" +
-      ".amad-sb-wide{width:100%;justify-content:flex-start;padding:0 8px;}" +
-      ".amad-sb-icon{font-size:15px;line-height:1;}" +
+      ".amad-sb-rail .amad-sb-btn{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;padding:0;margin:0;}" +
+      ".amad-sb-label{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden;}" +
+      ".amad-sb-icon{width:18px;height:18px;flex:none;display:block;}" +
       ".amad-frame{flex:1;min-height:0;width:100%;border:0;display:block;background:transparent;}" +
       ".amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
     )
@@ -327,7 +328,6 @@ export function apply(ctx) {
           }),
           React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
           React.createElement('span', { className: 'amad-sub' }, status.error ? 'host 不可达' : (status.tts || '')),
-          React.createElement('button', { className: 'amad-btn', title: '关闭面板', onClick: closePanel }, '✕'),
         ),
         React.createElement('iframe', {
           className: 'amad-frame',
@@ -463,15 +463,27 @@ export function apply(ctx) {
     // ---------------- 侧边栏常驻入口 ----------------
     function SidebarToggle(props) {
       const wide = !!(props && props.wide)
-      return React.createElement('div', null,
+      return React.createElement('div', { className: wide ? 'amad-sb' : 'amad-sb amad-sb-rail' },
         React.createElement(RootPoller),
         React.createElement('button', {
-          className: 'amad-sb-btn' + (wide ? ' amad-sb-wide' : ''),
+          className: 'amad-sb-btn',
           title: 'Amadeus',
           onClick: openPanel,
         },
-          React.createElement('span', { className: 'amad-sb-icon' }, '📱'),
-          wide ? React.createElement('span', null, 'Amadeus') : null,
+          React.createElement('svg', {
+            className: 'amad-sb-icon',
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 1.8,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+            'aria-hidden': 'true',
+          },
+            React.createElement('rect', { x: 6, y: 2.5, width: 12, height: 19, rx: 2.5 }),
+            React.createElement('path', { d: 'M10.5 6h3' }),
+          ),
+          wide ? React.createElement('span', { className: 'amad-sb-label' }, 'Amadeus') : null,
         ),
       )
     }
