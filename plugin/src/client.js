@@ -193,62 +193,32 @@ return {
       try { await host.call('clientReport', { msg: String(msg).slice(0, 250) }) } catch (e) { /* ignore */ }
     }
 
-    // 独立右侧栏：0.2+ 以优先级 -1 占用 rightbar 槽（遮蔽官方右侧栏，但布局会为它让出轨道宽度，
-    // 不再遮盖内容）；dispose 即恢复内置右侧栏（可逆，设置页可切换）。
+    // 右侧栏面板（0.2+）：作为内置右侧栏的一个标签页（不接管官方侧栏、不遮盖内容）；
     // 旧版（≤0.1.x）仍走 layout.openDetails/closeDetails。
     const panelOpenStore = createStore(true)
-    let ownInit = true
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('amadeus.ownRightColumn') === '0') ownInit = false
-    } catch (e) { /* ignore */ }
-    const ownColumnStore = createStore(ownInit)
-    let rightbarDisposer = null
+    const AMAD_KIND = 'amadeus'
+    const AMAD_TAB_ID = 'amadeus-for-dsh'
 
-    function rightbarAvailable() {
-      return layout !== undefined && typeof layout.openRightbar === 'function'
-    }
-
-    function openPanel() {
+    function openPanel(ev) {
       panelOpenStore.set(true)
       notifyOpen()
       try {
-        if (rightbarAvailable()) layout.openRightbar(true, false)
-        else if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails()
-      } catch (e) { /* ignore */ }
+        const sr = ctx.get('sidebarRight')
+        if (sr !== undefined && typeof sr.openTabFromTarget === 'function') {
+          const el = (ev && ev.currentTarget) || (typeof document !== 'undefined' ? document.activeElement : undefined)
+          const target = typeof sr.commandTarget === 'function' ? sr.commandTarget(el) : undefined
+          if (target !== undefined) { sr.openTabFromTarget(AMAD_KIND, target); return }
+        }
+      } catch (e) { /* fall through */ }
+      try { if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails() } catch (e) { /* ignore */ }
     }
 
     function closePanel() {
       panelOpenStore.set(false)
-      try {
-        if (rightbarAvailable()) layout.closeRightbar()
-        else if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails()
-      } catch (e) { /* ignore */ }
+      try { if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails() } catch (e) { /* ignore */ }
     }
 
     function openDetailsSafe() { openPanel() }
-
-    function registerRightColumn() {
-      if (rightbarDisposer !== null || ownColumnStore.get() !== true || !rightbarAvailable()) return
-      rightbarDisposer = slots.inject('rightbar', () => slots.register(
-        { name: 'rightbar', priority: -1 },
-        () => React.createElement(AmadeusColumn),
-      ))
-      rpcReport('right column registered (shadows builtin rightbar)')
-    }
-
-    function releaseRightColumn() {
-      if (rightbarDisposer !== null) {
-        try { rightbarDisposer() } catch (e) { /* ignore */ }
-        rightbarDisposer = null
-      }
-      rpcReport('right column released (builtin rightbar restored)')
-    }
-
-    function setOwnColumn(on) {
-      ownColumnStore.set(!!on)
-      try { if (typeof localStorage !== 'undefined') localStorage.setItem('amadeus.ownRightColumn', on ? '1' : '0') } catch (e) { /* ignore */ }
-      if (on) { registerRightColumn(); openPanel() } else { releaseRightColumn() }
-    }
 
     rpcReport('client apply start')
 
@@ -379,7 +349,6 @@ return {
     function AmadeusSettings() {
       const config = useStore(configStore)
       const status = useStore(statusStore)
-      const ownCol = useStore(ownColumnStore)
       if (!config) {
         return React.createElement('div', null,
           React.createElement('div', { className: 'amad-settings-row' }, React.createElement('span', null, status.error ? '⚠ 无法连接 Amadeus Host：' + status.error : '正在连接 Amadeus Host…')),
@@ -422,9 +391,6 @@ return {
         group('主动互动节奏'),
         Row({ label: '空闲多久开口', control: Select({ value: pickIdle(config.idleChatMs), options: idleOptions, onChange: (v) => patchConfig({ idleChatMs: Number(v) }) }) }),
         Row({ label: '来电间隔', control: Select({ value: pickCall(config.callIntervalMs), options: callOptions, onChange: (v) => patchConfig({ callIntervalMs: Number(v) }) }) }),
-
-        group('界面'),
-        Row({ label: '独立右侧栏', desc: ownCol ? 'Amadeus 占用右侧栏，中间内容自动让位（内置右侧栏被替代，可随时切回）' : '当前使用内置右侧栏', control: React.createElement('button', { className: 'amad-settings-btn', onClick: () => setOwnColumn(!ownCol) }, ownCol ? '切回内置右侧栏' : '启用 Amadeus 独立栏') }),
 
         React.createElement('div', { style: { marginTop: '16px' } },
           React.createElement('button', { className: 'amad-settings-btn', onClick: () => rpcSay('アマデウス、準備完了。') }, '💬 测试语音'),
@@ -480,8 +446,35 @@ return {
       () => React.createElement(AmadeusColumn),
     ))
 
-    // 独立右侧栏面板（0.2+）：占用 rightbar 槽，优先级 -1 遮蔽官方右侧栏（布局让位、不遮盖内容）
-    registerRightColumn()
+    // 新版（0.2+）：注册为内置右侧栏的标签页类型（与文件/终端等标签共存，不接管右侧栏）。
+    // 注意：pane 槽的 key 必须是「tab 类型定义的 id」（不是 kind），否则打开时报“这类内容还没有可用的查看方式”。
+    let tabRegistered = false
+    function setupRightbarTab() {
+      if (tabRegistered) return
+      const tabs = ctx.get('sidebarRightTabs')
+      if (tabs === undefined || typeof tabs.register !== 'function') return
+      tabRegistered = true
+      ctx.effect(() => {
+        const base = { id: AMAD_TAB_ID, kind: AMAD_KIND, multiple: false, priority: 'builtin', title: () => 'Amadeus' }
+        const withGuide = Object.assign({
+          guide: [{ id: 'amadeus', order: 30, title: () => 'Amadeus', description: () => '牧濑红莉栖 · Live2D 翻盖手机' }],
+        }, base)
+        try { return tabs.register(withGuide) } catch (e) { return tabs.register(base) }
+      })
+      ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
+        { name: 'sidebar.right.pane.tab', key: AMAD_TAB_ID },
+        () => React.createElement(AmadeusColumn),
+      )))
+      ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register(
+        { name: 'sidebar.right.pane.tab.title', key: AMAD_TAB_ID },
+        () => React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
+      )))
+      rpcReport('rightbar tab registered')
+    }
+    setupRightbarTab()
+    if (!tabRegistered) {
+      try { ctx.inject(['sidebarRightTabs', 'sidebarRight'], () => { try { setupRightbarTab() } catch (e) { /* ignore */ } }) } catch (e) { /* ignore */ }
+    }
 
     slots.inject('sidebar.footer.action', () => slots.register(
       { name: 'sidebar.footer.action', id: 'amadeus', order: 50, label: 'Amadeus' },
@@ -501,13 +494,13 @@ return {
     openDetailsSafe()
     rpcReport('open right column (immediate)')
     ctx.timeout(() => {
-      registerRightColumn()
+      setupRightbarTab()
       openDetailsSafe()
       rpcReport('open right column retry (2s)')
     }, 2000)
     ctx.on('connection/reset', () => {
       rpcReport('connection/reset -> open right column')
-      registerRightColumn()
+      setupRightbarTab()
       openDetailsSafe()
     })
   },

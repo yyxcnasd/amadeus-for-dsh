@@ -232,66 +232,37 @@ function apply(ctx) {
     }
   }
   const panelOpenStore = createStore(true);
-  let ownInit = true;
-  try {
-    if (typeof localStorage !== "undefined" && localStorage.getItem("amadeus.ownRightColumn") === "0") ownInit = false;
-  } catch (e) {
-  }
-  const ownColumnStore = createStore(ownInit);
-  let rightbarDisposer = null;
-  function rightbarAvailable() {
-    return layout !== void 0 && typeof layout.openRightbar === "function";
-  }
-  function openPanel() {
+  const AMAD_KIND = "amadeus";
+  const AMAD_TAB_ID = "amadeus-for-dsh";
+  function openPanel(ev) {
     panelOpenStore.set(true);
     notifyOpen();
     try {
-      if (rightbarAvailable()) layout.openRightbar(true, false);
-      else if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
+      const sr = ctx.get("sidebarRight");
+      if (sr !== void 0 && typeof sr.openTabFromTarget === "function") {
+        const el = ev && ev.currentTarget || (typeof document !== "undefined" ? document.activeElement : void 0);
+        const target = typeof sr.commandTarget === "function" ? sr.commandTarget(el) : void 0;
+        if (target !== void 0) {
+          sr.openTabFromTarget(AMAD_KIND, target);
+          return;
+        }
+      }
+    } catch (e) {
+    }
+    try {
+      if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
     } catch (e) {
     }
   }
   function closePanel() {
     panelOpenStore.set(false);
     try {
-      if (rightbarAvailable()) layout.closeRightbar();
-      else if (layout !== void 0 && typeof layout.closeDetails === "function") layout.closeDetails();
+      if (layout !== void 0 && typeof layout.closeDetails === "function") layout.closeDetails();
     } catch (e) {
     }
   }
   function openDetailsSafe() {
     openPanel();
-  }
-  function registerRightColumn() {
-    if (rightbarDisposer !== null || ownColumnStore.get() !== true || !rightbarAvailable()) return;
-    rightbarDisposer = slots.inject("rightbar", () => slots.register(
-      { name: "rightbar", priority: -1 },
-      () => import_react.default.createElement(AmadeusColumn)
-    ));
-    rpcReport("right column registered (shadows builtin rightbar)");
-  }
-  function releaseRightColumn() {
-    if (rightbarDisposer !== null) {
-      try {
-        rightbarDisposer();
-      } catch (e) {
-      }
-      rightbarDisposer = null;
-    }
-    rpcReport("right column released (builtin rightbar restored)");
-  }
-  function setOwnColumn(on) {
-    ownColumnStore.set(!!on);
-    try {
-      if (typeof localStorage !== "undefined") localStorage.setItem("amadeus.ownRightColumn", on ? "1" : "0");
-    } catch (e) {
-    }
-    if (on) {
-      registerRightColumn();
-      openPanel();
-    } else {
-      releaseRightColumn();
-    }
   }
   rpcReport("client apply start");
   let iframeEl = null;
@@ -429,7 +400,6 @@ function apply(ctx) {
   function AmadeusSettings() {
     const config = useStore(configStore);
     const status = useStore(statusStore);
-    const ownCol = useStore(ownColumnStore);
     if (!config) {
       return import_react.default.createElement(
         "div",
@@ -472,8 +442,6 @@ function apply(ctx) {
       group("\u4E3B\u52A8\u4E92\u52A8\u8282\u594F"),
       Row({ label: "\u7A7A\u95F2\u591A\u4E45\u5F00\u53E3", control: Select({ value: pickIdle(config.idleChatMs), options: idleOptions, onChange: (v) => patchConfig({ idleChatMs: Number(v) }) }) }),
       Row({ label: "\u6765\u7535\u95F4\u9694", control: Select({ value: pickCall(config.callIntervalMs), options: callOptions, onChange: (v) => patchConfig({ callIntervalMs: Number(v) }) }) }),
-      group("\u754C\u9762"),
-      Row({ label: "\u72EC\u7ACB\u53F3\u4FA7\u680F", desc: ownCol ? "Amadeus \u5360\u7528\u53F3\u4FA7\u680F\uFF0C\u4E2D\u95F4\u5185\u5BB9\u81EA\u52A8\u8BA9\u4F4D\uFF08\u5185\u7F6E\u53F3\u4FA7\u680F\u88AB\u66FF\u4EE3\uFF0C\u53EF\u968F\u65F6\u5207\u56DE\uFF09" : "\u5F53\u524D\u4F7F\u7528\u5185\u7F6E\u53F3\u4FA7\u680F", control: import_react.default.createElement("button", { className: "amad-settings-btn", onClick: () => setOwnColumn(!ownCol) }, ownCol ? "\u5207\u56DE\u5185\u7F6E\u53F3\u4FA7\u680F" : "\u542F\u7528 Amadeus \u72EC\u7ACB\u680F") }),
       import_react.default.createElement(
         "div",
         { style: { marginTop: "16px" } },
@@ -536,7 +504,45 @@ function apply(ctx) {
     { name: "details", priority: -1 },
     () => import_react.default.createElement(AmadeusColumn)
   ));
-  registerRightColumn();
+  let tabRegistered = false;
+  function setupRightbarTab() {
+    if (tabRegistered) return;
+    const tabs = ctx.get("sidebarRightTabs");
+    if (tabs === void 0 || typeof tabs.register !== "function") return;
+    tabRegistered = true;
+    ctx.effect(() => {
+      const base = { id: AMAD_TAB_ID, kind: AMAD_KIND, multiple: false, priority: "builtin", title: () => "Amadeus" };
+      const withGuide = Object.assign({
+        guide: [{ id: "amadeus", order: 30, title: () => "Amadeus", description: () => "\u7267\u6FD1\u7EA2\u8389\u6816 \xB7 Live2D \u7FFB\u76D6\u624B\u673A" }]
+      }, base);
+      try {
+        return tabs.register(withGuide);
+      } catch (e) {
+        return tabs.register(base);
+      }
+    });
+    ctx.effect(() => slots.inject("sidebar.right.pane.tab", () => slots.register(
+      { name: "sidebar.right.pane.tab", key: AMAD_TAB_ID },
+      () => import_react.default.createElement(AmadeusColumn)
+    )));
+    ctx.effect(() => slots.inject("sidebar.right.pane.tab.title", () => slots.register(
+      { name: "sidebar.right.pane.tab.title", key: AMAD_TAB_ID },
+      () => import_react.default.createElement("span", { className: "amad-title" }, "Amadeus")
+    )));
+    rpcReport("rightbar tab registered");
+  }
+  setupRightbarTab();
+  if (!tabRegistered) {
+    try {
+      ctx.inject(["sidebarRightTabs", "sidebarRight"], () => {
+        try {
+          setupRightbarTab();
+        } catch (e) {
+        }
+      });
+    } catch (e) {
+    }
+  }
   slots.inject("sidebar.footer.action", () => slots.register(
     { name: "sidebar.footer.action", id: "amadeus", order: 50, label: "Amadeus" },
     (props) => import_react.default.createElement(SidebarToggle, props)
@@ -554,13 +560,13 @@ function apply(ctx) {
   openDetailsSafe();
   rpcReport("open right column (immediate)");
   ctx.timeout(() => {
-    registerRightColumn();
+    setupRightbarTab();
     openDetailsSafe();
     rpcReport("open right column retry (2s)");
   }, 2e3);
   ctx.on("connection/reset", () => {
     rpcReport("connection/reset -> open right column");
-    registerRightColumn();
+    setupRightbarTab();
     openDetailsSafe();
   });
 }
