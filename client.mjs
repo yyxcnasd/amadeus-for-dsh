@@ -1,6 +1,6 @@
 // ============================================================
 // Amadeus for DSH — Client half (v3)
-// 功能：暗红全局主题；牧濑红莉栖 Live2D 常驻右侧栏（details 列）；
+// 功能：暗红全局主题；牧濑红莉栖 Live2D 常驻右侧栏（0.2+ 右侧栏 tab / 旧版 details 列）；
 //   设置页；侧边栏打开按钮；配置与状态轮询。
 // 说明：本文件内容即动态 Cordis 插件的 client 函数体（return {...}）。
 // ============================================================
@@ -204,9 +204,42 @@ export function apply(ctx) {
       try { await hostLocal.call('clientReport', { msg: String(msg).slice(0, 250) }) } catch (e) { /* ignore */ }
     }
 
+    // 右侧栏：DSH 0.2+ 用 sidebarRight 的 tab；旧版用 layout.openDetails/closeDetails
+    const AMAD_KIND = 'amadeus'
+
+    function openPanel(ev) {
+      notifyOpen()
+      try {
+        const sr = ctx.get('sidebarRight')
+        if (sr !== undefined && typeof sr.openTabFromTarget === 'function') {
+          const el = (ev && ev.currentTarget) || (typeof document !== 'undefined' ? document.activeElement : undefined)
+          const target = typeof sr.commandTarget === 'function' ? sr.commandTarget(el) : undefined
+          if (target !== undefined) { sr.openTabFromTarget(AMAD_KIND, target); return }
+        }
+      } catch (e) { /* fall through */ }
+      openDetailsSafe()
+    }
+
+    function closePanel() {
+      try {
+        if (layout !== undefined && typeof layout.closeRightbar === 'function') { layout.closeRightbar(); return }
+        if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails()
+      } catch (e) { /* ignore */ }
+    }
+
     function openDetailsSafe() {
-      if (layout === undefined) return
-      try { layout.openDetails() } catch (e) { /* ignore */ }
+      // 旧版：直接打开右侧 details 列
+      if (layout !== undefined && typeof layout.openDetails === 'function') {
+        try { layout.openDetails(); return } catch (e) { /* ignore */ }
+      }
+      // 新版：用当前屏幕目标打开 Amadeus tab（有活跃会话时面板即出现）
+      try {
+        const sr = ctx.get('sidebarRight')
+        if (sr !== undefined && typeof sr.openTabFromTarget === 'function' && typeof document !== 'undefined') {
+          const target = typeof sr.commandTarget === 'function' ? sr.commandTarget(document.body) : undefined
+          if (target !== undefined) sr.openTabFromTarget(AMAD_KIND, target)
+        }
+      } catch (e) { /* ignore */ }
     }
 
     rpcReport('client apply start')
@@ -379,8 +412,8 @@ export function apply(ctx) {
           React.createElement('button', { className: 'amad-settings-btn', onClick: rpcRepeat }, '↺ 重播上一条'),
           React.createElement('button', { className: 'amad-settings-btn', onClick: rpcClear }, '🧹 清空队列'),
           React.createElement('button', { className: 'amad-settings-btn', onClick: rpcTestCall }, '📞 测试来电'),
-          React.createElement('button', { className: 'amad-settings-btn', onClick: () => { notifyOpen(); if (layout) layout.openDetails() } }, '👁 打开右侧栏'),
-          React.createElement('button', { className: 'amad-settings-btn', onClick: () => { if (layout) layout.closeDetails() } }, '🚫 关闭右侧栏'),
+          React.createElement('button', { className: 'amad-settings-btn', onClick: openPanel }, '👁 打开右侧栏'),
+          React.createElement('button', { className: 'amad-settings-btn', onClick: closePanel }, '🚫 关闭右侧栏'),
         ),
         React.createElement('div', { className: 'amad-settings-row', style: { marginTop: '10px' } },
           React.createElement('span', { style: { fontSize: '12px', color: '#9a8f8b' } },
@@ -400,16 +433,49 @@ export function apply(ctx) {
         React.createElement('button', {
           className: 'amad-sb-btn',
           title: '打开 Amadeus 右侧栏',
-          onClick: () => { notifyOpen(); if (layout) layout.openDetails() },
+          onClick: openPanel,
         }, wide ? 'Amadeus' : 'A'),
       )
     }
 
     // ---------------- 槽位注册 ----------------
+    // 旧版（≤0.1.x）：右侧 details 列。0.2 已移除该槽 → slots.inject 会等待声明，注册无副作用。
     slots.inject('details', () => slots.register(
       { name: 'details', priority: -1 },
       () => React.createElement(AmadeusColumn),
     ))
+
+    // 新版（0.2+）：右侧栏 tab 类型 + keyed 面板槽（sidebar.right.pane.tab / .title）
+    // sidebarRightTabs 若尚未就绪，用 ctx.inject 等服务出现后补注册（避免静默无面板）
+    let rightbarRegistered = false
+    function setupRightbarTab() {
+      if (rightbarRegistered) return
+      const tabs = ctx.get('sidebarRightTabs')
+      if (tabs === undefined || typeof tabs.register !== 'function') return
+      rightbarRegistered = true
+      ctx.effect(() => {
+        const base = { id: 'amadeus-for-dsh', kind: AMAD_KIND, multiple: false, priority: 'builtin', title: () => 'Amadeus' }
+        const withGuide = Object.assign({
+          guide: [{ id: 'amadeus', order: 30, title: () => 'Amadeus', description: () => '牧濑红莉栖 · Live2D 翻盖手机' }],
+        }, base)
+        try { return tabs.register(withGuide) } catch (e) { return tabs.register(base) }
+      })
+      ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
+        { name: 'sidebar.right.pane.tab', key: AMAD_KIND },
+        () => React.createElement(AmadeusColumn),
+      )))
+      ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register(
+        { name: 'sidebar.right.pane.tab.title', key: AMAD_KIND },
+        () => React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
+      )))
+      rpcReport('rightbar tab registered')
+    }
+    setupRightbarTab()
+    if (!rightbarRegistered) {
+      try {
+        ctx.inject(['sidebarRightTabs', 'sidebarRight'], () => { try { setupRightbarTab() } catch (e) { /* ignore */ } })
+      } catch (e) { /* ignore */ }
+    }
 
     slots.inject('sidebar.footer.action', () => slots.register(
       { name: 'sidebar.footer.action', id: 'amadeus', order: 50, label: 'Amadeus' },

@@ -234,10 +234,47 @@ function apply(ctx) {
     } catch (e) {
     }
   }
-  function openDetailsSafe() {
-    if (layout === void 0) return;
+  const AMAD_KIND = "amadeus";
+  function openPanel(ev) {
+    notifyOpen();
     try {
-      layout.openDetails();
+      const sr = ctx.get("sidebarRight");
+      if (sr !== void 0 && typeof sr.openTabFromTarget === "function") {
+        const el = ev && ev.currentTarget || (typeof document !== "undefined" ? document.activeElement : void 0);
+        const target = typeof sr.commandTarget === "function" ? sr.commandTarget(el) : void 0;
+        if (target !== void 0) {
+          sr.openTabFromTarget(AMAD_KIND, target);
+          return;
+        }
+      }
+    } catch (e) {
+    }
+    openDetailsSafe();
+  }
+  function closePanel() {
+    try {
+      if (layout !== void 0 && typeof layout.closeRightbar === "function") {
+        layout.closeRightbar();
+        return;
+      }
+      if (layout !== void 0 && typeof layout.closeDetails === "function") layout.closeDetails();
+    } catch (e) {
+    }
+  }
+  function openDetailsSafe() {
+    if (layout !== void 0 && typeof layout.openDetails === "function") {
+      try {
+        layout.openDetails();
+        return;
+      } catch (e) {
+      }
+    }
+    try {
+      const sr = ctx.get("sidebarRight");
+      if (sr !== void 0 && typeof sr.openTabFromTarget === "function" && typeof document !== "undefined") {
+        const target = typeof sr.commandTarget === "function" ? sr.commandTarget(document.body) : void 0;
+        if (target !== void 0) sr.openTabFromTarget(AMAD_KIND, target);
+      }
     } catch (e) {
     }
   }
@@ -420,13 +457,8 @@ function apply(ctx) {
         import_react.default.createElement("button", { className: "amad-settings-btn", onClick: rpcRepeat }, "\u21BA \u91CD\u64AD\u4E0A\u4E00\u6761"),
         import_react.default.createElement("button", { className: "amad-settings-btn", onClick: rpcClear }, "\u{1F9F9} \u6E05\u7A7A\u961F\u5217"),
         import_react.default.createElement("button", { className: "amad-settings-btn", onClick: rpcTestCall }, "\u{1F4DE} \u6D4B\u8BD5\u6765\u7535"),
-        import_react.default.createElement("button", { className: "amad-settings-btn", onClick: () => {
-          notifyOpen();
-          if (layout) layout.openDetails();
-        } }, "\u{1F441} \u6253\u5F00\u53F3\u4FA7\u680F"),
-        import_react.default.createElement("button", { className: "amad-settings-btn", onClick: () => {
-          if (layout) layout.closeDetails();
-        } }, "\u{1F6AB} \u5173\u95ED\u53F3\u4FA7\u680F")
+        import_react.default.createElement("button", { className: "amad-settings-btn", onClick: openPanel }, "\u{1F441} \u6253\u5F00\u53F3\u4FA7\u680F"),
+        import_react.default.createElement("button", { className: "amad-settings-btn", onClick: closePanel }, "\u{1F6AB} \u5173\u95ED\u53F3\u4FA7\u680F")
       ),
       import_react.default.createElement(
         "div",
@@ -449,10 +481,7 @@ function apply(ctx) {
       import_react.default.createElement("button", {
         className: "amad-sb-btn",
         title: "\u6253\u5F00 Amadeus \u53F3\u4FA7\u680F",
-        onClick: () => {
-          notifyOpen();
-          if (layout) layout.openDetails();
-        }
+        onClick: openPanel
       }, wide ? "Amadeus" : "A")
     );
   }
@@ -460,6 +489,45 @@ function apply(ctx) {
     { name: "details", priority: -1 },
     () => import_react.default.createElement(AmadeusColumn)
   ));
+  let rightbarRegistered = false;
+  function setupRightbarTab() {
+    if (rightbarRegistered) return;
+    const tabs = ctx.get("sidebarRightTabs");
+    if (tabs === void 0 || typeof tabs.register !== "function") return;
+    rightbarRegistered = true;
+    ctx.effect(() => {
+      const base = { id: "amadeus-for-dsh", kind: AMAD_KIND, multiple: false, priority: "builtin", title: () => "Amadeus" };
+      const withGuide = Object.assign({
+        guide: [{ id: "amadeus", order: 30, title: () => "Amadeus", description: () => "\u7267\u6FD1\u7EA2\u8389\u6816 \xB7 Live2D \u7FFB\u76D6\u624B\u673A" }]
+      }, base);
+      try {
+        return tabs.register(withGuide);
+      } catch (e) {
+        return tabs.register(base);
+      }
+    });
+    ctx.effect(() => slots.inject("sidebar.right.pane.tab", () => slots.register(
+      { name: "sidebar.right.pane.tab", key: AMAD_KIND },
+      () => import_react.default.createElement(AmadeusColumn)
+    )));
+    ctx.effect(() => slots.inject("sidebar.right.pane.tab.title", () => slots.register(
+      { name: "sidebar.right.pane.tab.title", key: AMAD_KIND },
+      () => import_react.default.createElement("span", { className: "amad-title" }, "Amadeus")
+    )));
+    rpcReport("rightbar tab registered");
+  }
+  setupRightbarTab();
+  if (!rightbarRegistered) {
+    try {
+      ctx.inject(["sidebarRightTabs", "sidebarRight"], () => {
+        try {
+          setupRightbarTab();
+        } catch (e) {
+        }
+      });
+    } catch (e) {
+    }
+  }
   slots.inject("sidebar.footer.action", () => slots.register(
     { name: "sidebar.footer.action", id: "amadeus", order: 50, label: "Amadeus" },
     (props) => import_react.default.createElement(SidebarToggle, props)

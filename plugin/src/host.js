@@ -1134,12 +1134,19 @@ return {
         } catch (e) { /* ignore */ }
       }
       if (provider === null || model === null) throw new Error('no model available')
-      const llmMessages = messages.map((m) => ({
-        id: 'amad-' + Math.random().toString(36).slice(2, 10),
-        role: m.role,
-        content: [{ type: 'text', text: m.content }],
-        source: { kind: 'plugin', plugin: 'amadeus' },
-      }))
+      // DSH 0.2 起消息来源类型固定为 user/model/tool/system-prompt：
+      // user 轮用 RequestUserInput（无需 id/source），assistant 轮用 model 来源。
+      const llmMessages = messages.map((m) => {
+        if (m.role === 'assistant') {
+          return {
+            id: 'amad-' + Math.random().toString(36).slice(2, 10),
+            role: 'assistant',
+            content: [{ type: 'text', text: m.content }],
+            source: { kind: 'model', provider, model },
+          }
+        }
+        return { role: 'user', content: [{ type: 'text', text: m.content }] }
+      })
       const options = {
         provider,
         model,
@@ -1960,11 +1967,26 @@ return {
       } catch (e) { /* ignore */ }
     }))
 
-    // dsh ≥ 0.1.1 已移除 agent/error 事件（新版仅有 agent/request|created|disposed）；
-    // 工作失败播报改由下方 jobs.onJobDone(status === 'failed') 承担。
+    // agent/error 事件在 DSH 0.2 重新提供（0.1.x 曾移除）；不存在时注册无副作用
+    ctx.effect(() => ctx.on('agent/error', (payload) => {
+      try {
+        if (payload && payload.error) announce('エラーが発生したわ。ログを確認して。', '发生错误了，看看日志吧。', 'angry')
+      } catch (e) { /* ignore */ }
+    }))
 
     const jobs = ctx.get('jobs')
-    if (jobs !== undefined) {
+    if (jobs !== undefined && jobs.events !== undefined && typeof jobs.events.subscribe === 'function') {
+      // DSH 0.2+：jobs.events.subscribe（onJobDone 已从服务契约移除）
+      ctx.effect(() => jobs.events.subscribe({ owners: 'all' }, (event) => {
+        try {
+          if (event === null || typeof event !== 'object' || event.type !== 'settled') return
+          const job = event.job
+          if (job && job.status === 'failed') announce('エラーが発生したわ。ログを確認して。', '后台工作出错了，看看日志吧。', 'angry')
+          else announce('バックグラウンドの仕事、終わったわよ。', '后台的工作做完了。', 'neutral')
+        } catch (e) { /* ignore */ }
+      }))
+    } else if (jobs !== undefined && typeof jobs.onJobDone === 'function') {
+      // 旧版（≤0.1.x）兼容路径
       ctx.effect(() => jobs.onJobDone((snapshot) => {
         const failed = snapshot && snapshot.status === 'failed'
         if (failed) announce('エラーが発生したわ。ログを確認して。', '后台工作出错了，看看日志吧。', 'angry')
