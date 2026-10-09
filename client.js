@@ -58,7 +58,7 @@ function apply(ctx) {
     };
   }
   const removeCss = domCss(
-    ".amad-col{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--dsw-alias-bg-base,transparent);}.amad-dock{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:46vw;z-index:60;pointer-events:auto;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);box-shadow:-8px 0 24px rgba(0,0,0,.28);}.amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}.amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}.amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}.amad-sub{font-size:10px;color:var(--dsw-alias-label-secondary,#9a8f8b);margin-right:auto;}.amad-btn{border:0;background:rgba(255,255,255,.08);color:inherit;width:24px;height:24px;border-radius:6px;font-size:12px;cursor:pointer;line-height:1;padding:0;flex:none;}.amad-btn:hover{background:rgba(255,255,255,.18);}.amad-frame{flex:1;min-height:300px;width:100%;border:0;display:block;background:transparent;}.amad-footer{padding:4px 10px;font-size:10px;color:var(--dsw-alias-label-secondary,#8d8380);border-top:1px solid rgba(255,255,255,.08);flex:none;}.amad-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 4px;border-bottom:1px solid rgba(128,128,128,.18);}.amad-settings-label{font-weight:600;}.amad-settings-desc{font-size:12px;color:#9a8f8b;margin-top:2px;}.amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}.amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}.amad-settings-btn:hover{background:rgba(128,128,128,.15);}.amad-sb-btn{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;flex:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;padding:0;width:28px;height:28px;font-size:13px;}.amad-sb-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}.amad-sb-wide{width:100%;justify-content:flex-start;padding:0 8px;}.amad-sb-icon{font-size:15px;line-height:1;}.amad-frame{flex:1;min-height:0;width:100%;border:0;display:block;background:transparent;}.amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
+    ".amad-col{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);}.amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}.amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}.amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}.amad-sub{font-size:10px;color:var(--dsw-alias-label-secondary,#9a8f8b);margin-right:auto;}.amad-btn{border:0;background:rgba(255,255,255,.08);color:inherit;width:24px;height:24px;border-radius:6px;font-size:12px;cursor:pointer;line-height:1;padding:0;flex:none;}.amad-btn:hover{background:rgba(255,255,255,.18);}.amad-frame{flex:1;min-height:300px;width:100%;border:0;display:block;background:transparent;}.amad-footer{padding:4px 10px;font-size:10px;color:var(--dsw-alias-label-secondary,#8d8380);border-top:1px solid rgba(255,255,255,.08);flex:none;}.amad-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 4px;border-bottom:1px solid rgba(128,128,128,.18);}.amad-settings-label{font-weight:600;}.amad-settings-desc{font-size:12px;color:#9a8f8b;margin-top:2px;}.amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}.amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}.amad-settings-btn:hover{background:rgba(128,128,128,.15);}.amad-sb-btn{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;flex:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;padding:0;width:28px;height:28px;font-size:13px;}.amad-sb-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}.amad-sb-wide{width:100%;justify-content:flex-start;padding:0 8px;}.amad-sb-icon{font-size:15px;line-height:1;}.amad-frame{flex:1;min-height:0;width:100%;border:0;display:block;background:transparent;}.amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
   );
   ctx.effect(() => removeCss);
   const theme = ctx.get("theme");
@@ -232,25 +232,65 @@ function apply(ctx) {
     }
   }
   const panelOpenStore = createStore(true);
+  let ownInit = true;
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem("amadeus.ownRightColumn") === "0") ownInit = false;
+  } catch (e) {
+  }
+  const ownColumnStore = createStore(ownInit);
+  let rightbarDisposer = null;
+  function rightbarAvailable() {
+    return layout !== void 0 && typeof layout.openRightbar === "function";
+  }
   function openPanel() {
     panelOpenStore.set(true);
     notifyOpen();
     try {
-      if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
+      if (rightbarAvailable()) layout.openRightbar(true, false);
+      else if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
     } catch (e) {
     }
   }
   function closePanel() {
     panelOpenStore.set(false);
     try {
-      if (layout !== void 0 && typeof layout.closeDetails === "function") layout.closeDetails();
+      if (rightbarAvailable()) layout.closeRightbar();
+      else if (layout !== void 0 && typeof layout.closeDetails === "function") layout.closeDetails();
     } catch (e) {
     }
   }
   function openDetailsSafe() {
+    openPanel();
+  }
+  function registerRightColumn() {
+    if (rightbarDisposer !== null || ownColumnStore.get() !== true || !rightbarAvailable()) return;
+    rightbarDisposer = slots.inject("rightbar", () => slots.register(
+      { name: "rightbar", priority: -1 },
+      () => import_react.default.createElement(AmadeusColumn)
+    ));
+    rpcReport("right column registered (shadows builtin rightbar)");
+  }
+  function releaseRightColumn() {
+    if (rightbarDisposer !== null) {
+      try {
+        rightbarDisposer();
+      } catch (e) {
+      }
+      rightbarDisposer = null;
+    }
+    rpcReport("right column released (builtin rightbar restored)");
+  }
+  function setOwnColumn(on) {
+    ownColumnStore.set(!!on);
     try {
-      if (layout !== void 0 && typeof layout.openDetails === "function") layout.openDetails();
+      if (typeof localStorage !== "undefined") localStorage.setItem("amadeus.ownRightColumn", on ? "1" : "0");
     } catch (e) {
+    }
+    if (on) {
+      registerRightColumn();
+      openPanel();
+    } else {
+      releaseRightColumn();
     }
   }
   rpcReport("client apply start");
@@ -390,6 +430,7 @@ function apply(ctx) {
   function AmadeusSettings() {
     const config = useStore(configStore);
     const status = useStore(statusStore);
+    const ownCol = useStore(ownColumnStore);
     if (!config) {
       return import_react.default.createElement(
         "div",
@@ -432,6 +473,8 @@ function apply(ctx) {
       group("\u4E3B\u52A8\u4E92\u52A8\u8282\u594F"),
       Row({ label: "\u7A7A\u95F2\u591A\u4E45\u5F00\u53E3", control: Select({ value: pickIdle(config.idleChatMs), options: idleOptions, onChange: (v) => patchConfig({ idleChatMs: Number(v) }) }) }),
       Row({ label: "\u6765\u7535\u95F4\u9694", control: Select({ value: pickCall(config.callIntervalMs), options: callOptions, onChange: (v) => patchConfig({ callIntervalMs: Number(v) }) }) }),
+      group("\u754C\u9762"),
+      Row({ label: "\u72EC\u7ACB\u53F3\u4FA7\u680F", desc: ownCol ? "Amadeus \u5360\u7528\u53F3\u4FA7\u680F\uFF0C\u4E2D\u95F4\u5185\u5BB9\u81EA\u52A8\u8BA9\u4F4D\uFF08\u5185\u7F6E\u53F3\u4FA7\u680F\u88AB\u66FF\u4EE3\uFF0C\u53EF\u968F\u65F6\u5207\u56DE\uFF09" : "\u5F53\u524D\u4F7F\u7528\u5185\u7F6E\u53F3\u4FA7\u680F", control: import_react.default.createElement("button", { className: "amad-settings-btn", onClick: () => setOwnColumn(!ownCol) }, ownCol ? "\u5207\u56DE\u5185\u7F6E\u53F3\u4FA7\u680F" : "\u542F\u7528 Amadeus \u72EC\u7ACB\u680F") }),
       import_react.default.createElement(
         "div",
         { style: { marginTop: "16px" } },
@@ -480,20 +523,7 @@ function apply(ctx) {
     { name: "details", priority: -1 },
     () => import_react.default.createElement(AmadeusColumn)
   ));
-  function AmadeusDock() {
-    const open = useStore(panelOpenStore);
-    if (!open) return null;
-    return import_react.default.createElement(
-      "div",
-      { className: "amad-dock" },
-      import_react.default.createElement(AmadeusColumn)
-    );
-  }
-  slots.inject("shell.overlay", () => slots.register(
-    { name: "shell.overlay", id: "amadeus-panel", order: 10 },
-    () => import_react.default.createElement(AmadeusDock)
-  ));
-  rpcReport("overlay dock registered");
+  registerRightColumn();
   slots.inject("sidebar.footer.action", () => slots.register(
     { name: "sidebar.footer.action", id: "amadeus", order: 50, label: "Amadeus" },
     (props) => import_react.default.createElement(SidebarToggle, props)
@@ -509,13 +539,15 @@ function apply(ctx) {
   ));
   applyTheme(true);
   openDetailsSafe();
-  rpcReport("openDetails called (immediate)");
+  rpcReport("open right column (immediate)");
   ctx.timeout(() => {
+    registerRightColumn();
     openDetailsSafe();
-    rpcReport("openDetails retry (2s)");
+    rpcReport("open right column retry (2s)");
   }, 2e3);
   ctx.on("connection/reset", () => {
-    rpcReport("connection/reset -> openDetails");
+    rpcReport("connection/reset -> open right column");
+    registerRightColumn();
     openDetailsSafe();
   });
 }

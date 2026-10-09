@@ -13,8 +13,7 @@ return {
 
     // ---------------- 样式 ----------------
     const removeCss = styles.insert(
-      ".amad-col{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--dsw-alias-bg-base,transparent);}" +
-      ".amad-dock{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:46vw;z-index:60;pointer-events:auto;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);box-shadow:-8px 0 24px rgba(0,0,0,.28);}" +
+      ".amad-col{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);}" +
       ".amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}" +
       ".amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}" +
       ".amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}" +
@@ -193,24 +192,61 @@ return {
       try { await host.call('clientReport', { msg: String(msg).slice(0, 250) }) } catch (e) { /* ignore */ }
     }
 
-    // 独立右侧栏：0.2+ 使用自有停靠面板（shell.overlay），不占用内置右侧栏的 tab 体系；
+    // 独立右侧栏：0.2+ 以优先级 -1 占用 rightbar 槽（遮蔽官方右侧栏，但布局会为它让出轨道宽度，
+    // 不再遮盖内容）；dispose 即恢复内置右侧栏（可逆，设置页可切换）。
     // 旧版（≤0.1.x）仍走 layout.openDetails/closeDetails。
     const panelOpenStore = createStore(true)
+    let ownInit = true
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('amadeus.ownRightColumn') === '0') ownInit = false
+    } catch (e) { /* ignore */ }
+    const ownColumnStore = createStore(ownInit)
+    let rightbarDisposer = null
+
+    function rightbarAvailable() {
+      return layout !== undefined && typeof layout.openRightbar === 'function'
+    }
 
     function openPanel() {
       panelOpenStore.set(true)
       notifyOpen()
-      try { if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails() } catch (e) { /* ignore */ }
+      try {
+        if (rightbarAvailable()) layout.openRightbar(true, false)
+        else if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails()
+      } catch (e) { /* ignore */ }
     }
 
     function closePanel() {
       panelOpenStore.set(false)
-      try { if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails() } catch (e) { /* ignore */ }
+      try {
+        if (rightbarAvailable()) layout.closeRightbar()
+        else if (layout !== undefined && typeof layout.closeDetails === 'function') layout.closeDetails()
+      } catch (e) { /* ignore */ }
     }
 
-    function openDetailsSafe() {
-      // 仅旧版：打开右侧 details 列（新版面板由 shell.overlay 常驻渲染）
-      try { if (layout !== undefined && typeof layout.openDetails === 'function') layout.openDetails() } catch (e) { /* ignore */ }
+    function openDetailsSafe() { openPanel() }
+
+    function registerRightColumn() {
+      if (rightbarDisposer !== null || ownColumnStore.get() !== true || !rightbarAvailable()) return
+      rightbarDisposer = slots.inject('rightbar', () => slots.register(
+        { name: 'rightbar', priority: -1 },
+        () => React.createElement(AmadeusColumn),
+      ))
+      rpcReport('right column registered (shadows builtin rightbar)')
+    }
+
+    function releaseRightColumn() {
+      if (rightbarDisposer !== null) {
+        try { rightbarDisposer() } catch (e) { /* ignore */ }
+        rightbarDisposer = null
+      }
+      rpcReport('right column released (builtin rightbar restored)')
+    }
+
+    function setOwnColumn(on) {
+      ownColumnStore.set(!!on)
+      try { if (typeof localStorage !== 'undefined') localStorage.setItem('amadeus.ownRightColumn', on ? '1' : '0') } catch (e) { /* ignore */ }
+      if (on) { registerRightColumn(); openPanel() } else { releaseRightColumn() }
     }
 
     rpcReport('client apply start')
@@ -343,6 +379,7 @@ return {
     function AmadeusSettings() {
       const config = useStore(configStore)
       const status = useStore(statusStore)
+      const ownCol = useStore(ownColumnStore)
       if (!config) {
         return React.createElement('div', null,
           React.createElement('div', { className: 'amad-settings-row' }, React.createElement('span', null, status.error ? '⚠ 无法连接 Amadeus Host：' + status.error : '正在连接 Amadeus Host…')),
@@ -386,6 +423,9 @@ return {
         Row({ label: '空闲多久开口', control: Select({ value: pickIdle(config.idleChatMs), options: idleOptions, onChange: (v) => patchConfig({ idleChatMs: Number(v) }) }) }),
         Row({ label: '来电间隔', control: Select({ value: pickCall(config.callIntervalMs), options: callOptions, onChange: (v) => patchConfig({ callIntervalMs: Number(v) }) }) }),
 
+        group('界面'),
+        Row({ label: '独立右侧栏', desc: ownCol ? 'Amadeus 占用右侧栏，中间内容自动让位（内置右侧栏被替代，可随时切回）' : '当前使用内置右侧栏', control: React.createElement('button', { className: 'amad-settings-btn', onClick: () => setOwnColumn(!ownCol) }, ownCol ? '切回内置右侧栏' : '启用 Amadeus 独立栏') }),
+
         React.createElement('div', { style: { marginTop: '16px' } },
           React.createElement('button', { className: 'amad-settings-btn', onClick: () => rpcSay('アマデウス、準備完了。') }, '💬 测试语音'),
           React.createElement('button', { className: 'amad-settings-btn', onClick: async () => { const r = await rpcTestChat(); window.alert(r && r.ok ? 'AI API OK: ' + r.content : 'AI API Error: ' + (r && r.error ? r.error : 'unknown')) } }, '🔌 测试 AI API'),
@@ -428,19 +468,8 @@ return {
       () => React.createElement(AmadeusColumn),
     ))
 
-    // 独立右侧栏面板（0.2+）：注册到全框浮动层 shell.overlay（list 槽，不遮蔽官方右侧栏）
-    function AmadeusDock() {
-      const open = useStore(panelOpenStore)
-      if (!open) return null
-      return React.createElement('div', { className: 'amad-dock' },
-        React.createElement(AmadeusColumn),
-      )
-    }
-    slots.inject('shell.overlay', () => slots.register(
-      { name: 'shell.overlay', id: 'amadeus-panel', order: 10 },
-      () => React.createElement(AmadeusDock),
-    ))
-    rpcReport('overlay dock registered')
+    // 独立右侧栏面板（0.2+）：占用 rightbar 槽，优先级 -1 遮蔽官方右侧栏（布局让位、不遮盖内容）
+    registerRightColumn()
 
     slots.inject('sidebar.footer.action', () => slots.register(
       { name: 'sidebar.footer.action', id: 'amadeus', order: 50, label: 'Amadeus' },
@@ -455,16 +484,18 @@ return {
       ),
     ))
 
-    // 默认开启全局主题 + 打开右侧栏（多重保障：立即 + 延迟重试 + 连接重置后重试）
+    // 默认开启全局主题 + 展开右侧栏（多重保障：立即 + 延迟重试 + 连接重置后重试）
     applyTheme(true)
     openDetailsSafe()
-    rpcReport('openDetails called (immediate)')
+    rpcReport('open right column (immediate)')
     ctx.timeout(() => {
+      registerRightColumn()
       openDetailsSafe()
-      rpcReport('openDetails retry (2s)')
+      rpcReport('open right column retry (2s)')
     }, 2000)
     ctx.on('connection/reset', () => {
-      rpcReport('connection/reset -> openDetails')
+      rpcReport('connection/reset -> open right column')
+      registerRightColumn()
       openDetailsSafe()
     })
   },
