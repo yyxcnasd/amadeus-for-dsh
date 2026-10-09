@@ -489,6 +489,7 @@ function apply(ctx) {
     { name: "details", priority: -1 },
     () => import_react.default.createElement(AmadeusColumn)
   ));
+  const AMAD_TAB_ID = "amadeus-for-dsh";
   let rightbarRegistered = false;
   function setupRightbarTab() {
     if (rightbarRegistered) return;
@@ -496,7 +497,7 @@ function apply(ctx) {
     if (tabs === void 0 || typeof tabs.register !== "function") return;
     rightbarRegistered = true;
     ctx.effect(() => {
-      const base = { id: "amadeus-for-dsh", kind: AMAD_KIND, multiple: false, priority: "builtin", title: () => "Amadeus" };
+      const base = { id: AMAD_TAB_ID, kind: AMAD_KIND, multiple: false, priority: "builtin", title: () => "Amadeus" };
       const withGuide = Object.assign({
         guide: [{ id: "amadeus", order: 30, title: () => "Amadeus", description: () => "\u7267\u6FD1\u7EA2\u8389\u6816 \xB7 Live2D \u7FFB\u76D6\u624B\u673A" }]
       }, base);
@@ -507,11 +508,11 @@ function apply(ctx) {
       }
     });
     ctx.effect(() => slots.inject("sidebar.right.pane.tab", () => slots.register(
-      { name: "sidebar.right.pane.tab", key: AMAD_KIND },
+      { name: "sidebar.right.pane.tab", key: AMAD_TAB_ID },
       () => import_react.default.createElement(AmadeusColumn)
     )));
     ctx.effect(() => slots.inject("sidebar.right.pane.tab.title", () => slots.register(
-      { name: "sidebar.right.pane.tab.title", key: AMAD_KIND },
+      { name: "sidebar.right.pane.tab.title", key: AMAD_TAB_ID },
       () => import_react.default.createElement("span", { className: "amad-title" }, "Amadeus")
     )));
     rpcReport("rightbar tab registered");

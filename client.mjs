@@ -446,6 +446,9 @@ export function apply(ctx) {
     ))
 
     // 新版（0.2+）：右侧栏 tab 类型 + keyed 面板槽（sidebar.right.pane.tab / .title）
+    // 注意：pane 槽的 key 必须是「tab 类型定义的 id」（官方插件用包名），不是 kind，
+    // 否则打开 tab 时找不到视图，右侧栏会显示“这类内容还没有可用的查看方式”。
+    const AMAD_TAB_ID = 'amadeus-for-dsh'
     // sidebarRightTabs 若尚未就绪，用 ctx.inject 等服务出现后补注册（避免静默无面板）
     let rightbarRegistered = false
     function setupRightbarTab() {
@@ -454,18 +457,18 @@ export function apply(ctx) {
       if (tabs === undefined || typeof tabs.register !== 'function') return
       rightbarRegistered = true
       ctx.effect(() => {
-        const base = { id: 'amadeus-for-dsh', kind: AMAD_KIND, multiple: false, priority: 'builtin', title: () => 'Amadeus' }
+        const base = { id: AMAD_TAB_ID, kind: AMAD_KIND, multiple: false, priority: 'builtin', title: () => 'Amadeus' }
         const withGuide = Object.assign({
           guide: [{ id: 'amadeus', order: 30, title: () => 'Amadeus', description: () => '牧濑红莉栖 · Live2D 翻盖手机' }],
         }, base)
         try { return tabs.register(withGuide) } catch (e) { return tabs.register(base) }
       })
       ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
-        { name: 'sidebar.right.pane.tab', key: AMAD_KIND },
+        { name: 'sidebar.right.pane.tab', key: AMAD_TAB_ID },
         () => React.createElement(AmadeusColumn),
       )))
       ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register(
-        { name: 'sidebar.right.pane.tab.title', key: AMAD_KIND },
+        { name: 'sidebar.right.pane.tab.title', key: AMAD_TAB_ID },
         () => React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
       )))
       rpcReport('rightbar tab registered')
