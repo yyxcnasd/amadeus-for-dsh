@@ -14,13 +14,7 @@ return {
     // ---------------- 样式 ----------------
     const removeCss = styles.insert(
       ".amad-col{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base,transparent);border-left:1px solid var(--dsw-alias-border-l1,transparent);}" +
-      ".amad-header{display:flex;align-items:center;gap:6px;padding:8px 10px;user-select:none;background:linear-gradient(90deg,rgba(163,67,59,.45),rgba(163,67,59,.12));border-bottom:1px solid rgba(255,255,255,.1);flex:none;}" +
-      ".amad-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}" +
       ".amad-title{font-weight:700;letter-spacing:2px;color:var(--dsw-alias-label-primary,#f2e9e6);font-size:13px;}" +
-      ".amad-sub{font-size:10px;color:var(--dsw-alias-label-secondary,#9a8f8b);margin-right:auto;}" +
-      ".amad-btn{border:0;background:rgba(255,255,255,.08);color:inherit;width:24px;height:24px;border-radius:6px;font-size:12px;cursor:pointer;line-height:1;padding:0;flex:none;}" +
-      ".amad-btn:hover{background:rgba(255,255,255,.18);}" +
-      ".amad-frame{flex:1;min-height:300px;width:100%;border:0;display:block;background:transparent;}" +
       ".amad-footer{padding:4px 10px;font-size:10px;color:var(--dsw-alias-label-secondary,#8d8380);border-top:1px solid rgba(255,255,255,.08);flex:none;}" +
       ".amad-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 4px;border-bottom:1px solid rgba(128,128,128,.18);}" +
       ".amad-settings-label{font-weight:600;}" +
@@ -28,11 +22,13 @@ return {
       ".amad-settings select{border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:4px 8px;background:transparent;color:inherit;}" +
       ".amad-settings-btn{border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;border-radius:6px;padding:5px 12px;cursor:pointer;margin-right:8px;}" +
       ".amad-settings-btn:hover{background:rgba(128,128,128,.15);}" +
+      ".amad-sb{width:100%;display:flex;align-items:center;}" +
+      ".amad-sb-rail{width:36px;height:36px;margin:0;}" +
       ".amad-sb-btn{width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:none;border-radius:12px;display:inline-flex;align-items:center;gap:8px;margin:0 -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;overflow:hidden;}" +
       ".amad-sb-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}" +
       ".amad-sb-rail .amad-sb-btn{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;padding:0;margin:0;}" +
       ".amad-sb-label{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden;}" +
-      ".amad-sb-icon{width:18px;height:18px;flex:none;display:block;}" +
+      ".amad-sb-icon{flex:none;display:block;}" +
       ".amad-frame{flex:1;min-height:0;width:100%;border:0;display:block;background:transparent;}" +
       ".amad-warn{margin-top:14px;font-size:12px;color:#b08968;}"
     )
@@ -276,14 +272,6 @@ return {
       }, [config])
 
       return React.createElement('div', { className: 'amad-col' },
-        React.createElement('div', { className: 'amad-header' },
-          React.createElement('span', {
-            className: 'amad-dot',
-            style: { background: status.error ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-state-success-primary)' },
-          }),
-          React.createElement('span', { className: 'amad-title' }, 'Amadeus'),
-          React.createElement('span', { className: 'amad-sub' }, status.error ? 'host 不可达' : (status.tts || '')),
-        ),
         React.createElement('iframe', {
           className: 'amad-frame',
           src: panelSrc,
@@ -417,6 +405,7 @@ return {
       return React.createElement('div', { className: wide ? 'amad-sb' : 'amad-sb amad-sb-rail' },
         React.createElement(RootPoller),
         React.createElement('button', {
+          type: 'button',
           className: 'amad-sb-btn',
           title: 'Amadeus',
           onClick: openPanel,
@@ -424,6 +413,8 @@ return {
           React.createElement('svg', {
             className: 'amad-sb-icon',
             viewBox: '0 0 24 24',
+            width: wide ? 16 : 18,
+            height: wide ? 16 : 18,
             fill: 'none',
             stroke: 'currentColor',
             strokeWidth: 1.8,
